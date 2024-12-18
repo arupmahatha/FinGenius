@@ -1,0 +1,8 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "Show me the last 5 days of stock prices",
+  "thought_process": "",
+  "sql_query": "",
+  "results": "",
+  "timestamp": "2024-12-18T16:29:01.457306"
+}
