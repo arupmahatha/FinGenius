@@ -1,0 +1,13 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "Show me the last 5 days of stock prices",
+  "thought_process": "",
+  "sql_query": "",
+  "results": "",
+  "timestamp": "2024-12-18T23:45:14.027322",
+  "token_usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  "processing_time": 15.443933248519897
+}
