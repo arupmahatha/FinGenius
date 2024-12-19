@@ -4,10 +4,10 @@
   "thought_process": "",
   "sql_query": "",
   "results": [],
-  "timestamp": "2024-12-19T00:43:50.834380",
+  "timestamp": "2024-12-19T16:46:38.320185",
   "token_usage": {
-    "prompt_tokens": 112,
-    "completion_tokens": 0
+    "prompt_tokens": 195,
+    "completion_tokens": 2
   },
-  "processing_time": 15.797077894210815
+  "processing_time": 15.998163938522339
 }
