@@ -21,3 +21,15 @@ Tracking Tokens (Cost) and Time Usage:
 
 On an average assuming 100 questions with 60% being easy and 40% being complex, the cost for the day would be:
         $0.012405 * 60 + $0.0262095 * 40 = $0.7443 + $1.04838 = $1.79268
+
+
+Deliverables:
+1) Create a dummy data, database schema is given in the file - Done
+2) Add memory and human in the loop to the agent
+3) Examples of strategical level questions
+4) Note of processing time
+5) Output of the entire analysis (report), like ChatGPT output
+
+By Monday
+
+POC: 27th Dec, Host it in Streamlit
