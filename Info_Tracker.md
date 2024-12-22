@@ -7,15 +7,15 @@ Current pricing for Claude 3 Sonnet is:
 
 Tracking Tokens (Cost) and Time Usage:
 1) For easy questions: "Show me the last 5 days of stock prices?"
-        Processing Time: 16.67 seconds // 16.00 seconds another try
+        Processing Time: 16.67 seconds // 16.00 seconds another try // 15.20 seconds another try
         Token Usage:
-        Prompt Tokens: 195, that cost $0.000585
+        Prompt Tokens: 195, that cost $0.000585 // 195 another try // 195 another try
         Completion Tokens: 788, that cost $0.01182
         Total Cost: $0.012405
 2) For complex questions: "Is the stock worth investing?"
-        Processing Time: 151.22 seconds // 142.28 seconds another try
+        Processing Time: 151.22 seconds // 142.28 seconds another try // 205.34 seconds another try
         Token Usage:
-        Prompt Tokens: 2012, that cost $0.006036  // 2029 another try
+        Prompt Tokens: 2012, that cost $0.006036  // 2029 another try // 1960 another try
         Completion Tokens: 13449 that cost $0.0201735
         Total Cost: $0.0262095
 
@@ -26,9 +26,9 @@ On an average assuming 100 questions with 60% being easy and 40% being complex, 
 Deliverables:
 1) Create a dummy data, database schema is given in the file - Done
 2) Add memory and human in the loop to the agent
-3) Examples of strategical level questions
-4) Note of processing time
-5) Output of the entire analysis (report), like ChatGPT output
+3) Examples of strategical level questions - Done
+4) Note of processing time - Done
+5) Output of the entire analysis (report), like ChatGPT output - Done
 
 By Monday
 

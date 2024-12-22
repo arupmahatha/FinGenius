@@ -1,0 +1,18 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "Show me the last 5 days of stock prices",
+  "thought_process": "No thought process provided",
+  "sql_query": "No SQL query provided",
+  "results": "No results available",
+  "raw_agent_output": "The query provided the last 5 days of stock prices, including the open, close, high, low and volume for each day. The most recent trading day was 2024-12-16, where the stock opened at $247.99, reached a high of $251.38, low of $247.65, and closed at $251.04 with volume of 51,665,600 shares traded. The previous 4 days of price data were also returned in descending date order.",
+  "timestamp": "2024-12-22T19:38:26.497416",
+  "token_usage": {
+    "prompt_tokens": 195,
+    "completion_tokens": 2
+  },
+  "processing_time": 16.305702924728394,
+  "agent_state": {
+    "input": "Show me the last 5 days of stock prices",
+    "output": "The query provided the last 5 days of stock prices, including the open, close, high, low and volume for each day. The most recent trading day was 2024-12-16, where the stock opened at $247.99, reached a high of $251.38, low of $247.65, and closed at $251.04 with volume of 51,665,600 shares traded. The previous 4 days of price data were also returned in descending date order."
+  }
+}

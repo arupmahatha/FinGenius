@@ -1,0 +1,18 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "What's the hierarchy of accounts (Category \u2192 Sub-Category \u2192 Group)?",
+  "thought_process": "No thought process provided",
+  "sql_query": "No SQL query provided",
+  "results": "No results available",
+  "raw_agent_output": "This database does not contain the necessary information to show the hierarchy of accounts (Category -> Sub-Category -> Group). The only table is \"consumption\" which appears to be related to stock trading data rather than account structures.",
+  "timestamp": "2024-12-22T22:36:05.181693",
+  "token_usage": {
+    "prompt_tokens": 133,
+    "completion_tokens": 2
+  },
+  "processing_time": 7.960490942001343,
+  "agent_state": {
+    "input": "What's the hierarchy of accounts (Category \u2192 Sub-Category \u2192 Group)?",
+    "output": "This database does not contain the necessary information to show the hierarchy of accounts (Category -> Sub-Category -> Group). The only table is \"consumption\" which appears to be related to stock trading data rather than account structures."
+  }
+}
