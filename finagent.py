@@ -237,10 +237,11 @@ class StockAnalyzer:
                 st.write(f"Using modified value: {user_input}")
                 return user_input
                 
-            st.stop()  # This ensures we wait for user input
+            # Removed st.stop() to prevent the app from halting
             return default_value
             
-        except:
+        except Exception as e:
+            st.error(f"Error in human input: {str(e)}")
             # For command line
             response = input(f"\n{prompt}\nPress Enter to accept default or input your modification: ")
             return response if response.strip() else default_value
@@ -525,6 +526,18 @@ class StockAnalyzer:
                 thought = self._extract_thought(result['output'])
                 sql = self._extract_sql(result['output'])
                 
+                # Human review of SQL if enabled
+                if self.config.human_in_the_loop:
+                    st.subheader(f"Review SQL for Question {i}")
+                    modified_sql = self._get_human_input(
+                        f"Review SQL Query:\n{sql}\nEnter modifications or press Enter to accept: ",
+                        sql
+                    )
+                    if modified_sql != sql:
+                        sql = modified_sql
+                        st.write("Using modified SQL:")
+                        st.code(modified_sql, language="sql")
+                
                 try:
                     sql = sql.split(';')[0] + ';'
                     df = pd.read_sql_query(sql, self.conn)
@@ -575,6 +588,18 @@ class StockAnalyzer:
         
         self._update_token_usage(response)
         self.raw_responses['analysis'] = response.content
+        
+        # Human review of analysis if enabled
+        if self.config.human_in_the_loop:
+            st.subheader("Review Analysis")
+            modified_analysis = self._get_human_input(
+                f"Review Analysis:\n{response.content}\nEnter modifications or press Enter to accept: ",
+                response.content
+            )
+            if modified_analysis != response.content:
+                response.content = modified_analysis
+                st.write("Updated Analysis:")
+                st.write(modified_analysis)
         
         return response.content
 
