@@ -1,0 +1,141 @@
+2024-12-23 13:08:57,169 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:08:57,191 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:08:57,204 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:08:57,217 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:09,564 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:09,570 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:09,577 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:09,582 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:19,041 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:19,047 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:19,049 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:19,052 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:57,579 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:57,581 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:57,584 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:11:57,586 - ERROR - Component setup failed: 'StockAnalyzer' object has no attribute 'logger'
+2024-12-23 13:12:54,221 - INFO - Starting stock analysis application
+2024-12-23 13:12:54,222 - INFO - Configuration created
+2024-12-23 13:12:54,224 - INFO - Processing 4 test queries
+2024-12-23 13:12:54,226 - INFO - Processing query: Show me the last 5 days of stock prices
+2024-12-23 13:12:54,231 - StockAnalyzer - INFO - Logging setup complete
+2024-12-23 13:12:54,231 - INFO - Logging setup complete
+2024-12-23 13:12:54,234 - StockAnalyzer - INFO - Initializing components...
+2024-12-23 13:12:54,234 - INFO - Initializing components...
+2024-12-23 13:12:54,250 - StockAnalyzer - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,250 - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,251 - StockAnalyzer - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,251 - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,254 - INFO - Query processed successfully: Show me the last 5 days of stock prices
+2024-12-23 13:12:54,255 - INFO - Processing query: Analyze the trading volume patterns over the last month
+2024-12-23 13:12:54,256 - StockAnalyzer - INFO - Logging setup complete
+2024-12-23 13:12:54,256 - INFO - Logging setup complete
+2024-12-23 13:12:54,258 - StockAnalyzer - INFO - Initializing components...
+2024-12-23 13:12:54,258 - INFO - Initializing components...
+2024-12-23 13:12:54,262 - StockAnalyzer - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,262 - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,266 - StockAnalyzer - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,266 - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,268 - INFO - Query processed successfully: Analyze the trading volume patterns over the last month
+2024-12-23 13:12:54,270 - INFO - Processing query: What's the correlation between price and volume?
+2024-12-23 13:12:54,274 - StockAnalyzer - INFO - Logging setup complete
+2024-12-23 13:12:54,274 - INFO - Logging setup complete
+2024-12-23 13:12:54,277 - StockAnalyzer - INFO - Initializing components...
+2024-12-23 13:12:54,277 - INFO - Initializing components...
+2024-12-23 13:12:54,283 - StockAnalyzer - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,283 - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,285 - StockAnalyzer - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,285 - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,289 - INFO - Query processed successfully: What's the correlation between price and volume?
+2024-12-23 13:12:54,291 - INFO - Processing query: Identify days with unusual price movements
+2024-12-23 13:12:54,294 - StockAnalyzer - INFO - Logging setup complete
+2024-12-23 13:12:54,294 - INFO - Logging setup complete
+2024-12-23 13:12:54,295 - StockAnalyzer - INFO - Initializing components...
+2024-12-23 13:12:54,295 - INFO - Initializing components...
+2024-12-23 13:12:54,301 - StockAnalyzer - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,301 - ERROR - Database initialization failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,303 - StockAnalyzer - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,303 - ERROR - Component setup failed: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+Traceback (most recent call last):
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 196, in setup_components
+    self.db = self._init_database()
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 268, in _init_database
+    self._validate_dataframe(df)
+  File "/var/folders/lw/mxt4vf712k5_lslhrjcqqj700000gn/T/ipykernel_89698/2400009725.py", line 288, in _validate_dataframe
+    raise ValueError(f"Missing required columns: {missing_columns}")
+ValueError: Missing required columns: {'close', 'high', 'date', 'open', 'low', 'volume'}
+2024-12-23 13:12:54,305 - INFO - Query processed successfully: Identify days with unusual price movements
+2024-12-23 13:12:54,306 - INFO - All queries processed. Application completed.
+2024-12-23 13:25:43,157 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:43,932 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:45,481 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:46,889 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:48,652 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:51,885 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:53,222 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:25:56,467 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-12-23 13:26:00,099 - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
