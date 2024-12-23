@@ -1,0 +1,59 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "show me the total amount by account type",
+  "thought_process": "No thought process provided",
+  "sql_query": "SELECT account_type, SUM(Amount) AS total_amount  \nFROM consumption\nGROUP BY account_type;",
+  "results": [
+    {
+      "account_type": "Account_Type_0",
+      "total_amount": 15500.0
+    },
+    {
+      "account_type": "Account_Type_1",
+      "total_amount": 14600.0
+    },
+    {
+      "account_type": "Account_Type_2",
+      "total_amount": 14700.0
+    },
+    {
+      "account_type": "Account_Type_3",
+      "total_amount": 14800.0
+    },
+    {
+      "account_type": "Account_Type_4",
+      "total_amount": 14900.0
+    },
+    {
+      "account_type": "Account_Type_5",
+      "total_amount": 15000.0
+    },
+    {
+      "account_type": "Account_Type_6",
+      "total_amount": 15100.0
+    },
+    {
+      "account_type": "Account_Type_7",
+      "total_amount": 15200.0
+    },
+    {
+      "account_type": "Account_Type_8",
+      "total_amount": 15300.0
+    },
+    {
+      "account_type": "Account_Type_9",
+      "total_amount": 15400.0
+    }
+  ],
+  "raw_agent_output": "To get the total amount by account type, the SQL query is:\n\nSELECT account_type, SUM(Amount) AS total_amount  \nFROM consumption\nGROUP BY account_type;\n\nThis will return the account type and the sum of the Amount column grouped by the account_type column.",
+  "timestamp": "2024-12-24T00:34:20.310663",
+  "token_usage": {
+    "prompt_tokens": 158,
+    "completion_tokens": 2
+  },
+  "processing_time": 14.790893077850342,
+  "agent_state": {
+    "input": "show me the total amount by account type",
+    "output": "To get the total amount by account type, the SQL query is:\n\nSELECT account_type, SUM(Amount) AS total_amount  \nFROM consumption\nGROUP BY account_type;\n\nThis will return the account type and the sum of the Amount column grouped by the account_type column."
+  }
+}
