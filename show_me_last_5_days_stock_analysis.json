@@ -1,0 +1,18 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "show me last 5 days stock",
+  "thought_process": "No thought process provided",
+  "sql_query": "",
+  "results": "Error executing SQL: Could not extract SQL query from agent output",
+  "raw_agent_output": "The query and output show the requested stock data for the last 5 trading days, including:\n\nDate | open_price | close_price | high_price | low_price | volume\n-----|------------|-------------|------------|-----------|--------\n2023-12-22 | 194.19 | 194.53 | 195.39 | 193.72 | 44524600.0\n2023-12-21 | 194.92 | 194.28 | 195.23 | 193.62 | 46651700.0  \n2023-12-20 | 196.9 | 194.83 | 197.68 | 194.83 | 52242800.0\n2023-12-19 | 196.16 | 196.94 | 196.95 | 195.89 | 40714100.0\n2023-12-18 | 196.09 | 195.89 | 196.63 | 194.39 | 55751900.0\n\nThis shows the daily open, close, high, low prices and trading volume for each of the last 5 days the stock market was open.",
+  "timestamp": "2024-12-23T21:20:22.842209",
+  "token_usage": {
+    "prompt_tokens": 374,
+    "completion_tokens": 2
+  },
+  "processing_time": 21.150456190109253,
+  "agent_state": {
+    "input": "show me last 5 days stock",
+    "output": "The query and output show the requested stock data for the last 5 trading days, including:\n\nDate | open_price | close_price | high_price | low_price | volume\n-----|------------|-------------|------------|-----------|--------\n2023-12-22 | 194.19 | 194.53 | 195.39 | 193.72 | 44524600.0\n2023-12-21 | 194.92 | 194.28 | 195.23 | 193.62 | 46651700.0  \n2023-12-20 | 196.9 | 194.83 | 197.68 | 194.83 | 52242800.0\n2023-12-19 | 196.16 | 196.94 | 196.95 | 195.89 | 40714100.0\n2023-12-18 | 196.09 | 195.89 | 196.63 | 194.39 | 55751900.0\n\nThis shows the daily open, close, high, low prices and trading volume for each of the last 5 days the stock market was open."
+  }
+}
