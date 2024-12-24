@@ -1,0 +1,18 @@
+{
+  "query_type": "direct_sql",
+  "user_query": "what is the  date of highest price",
+  "thought_process": "No thought process provided",
+  "sql_query": "",
+  "results": "Error executing SQL: Could not extract SQL query from agent output",
+  "raw_agent_output": "The date with the highest price in the consumption table is 2024-12-16, with a high price of 251.38.",
+  "timestamp": "2024-12-24T10:27:22.315885",
+  "token_usage": {
+    "prompt_tokens": 114,
+    "completion_tokens": 2
+  },
+  "processing_time": 11.248034000396729,
+  "agent_state": {
+    "input": "what is the  date of highest price",
+    "output": "The date with the highest price in the consumption table is 2024-12-16, with a high price of 251.38."
+  }
+}

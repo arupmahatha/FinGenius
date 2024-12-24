@@ -3,7 +3,7 @@ import streamlit as st
 st.set_page_config(page_title="Stock Market Data Analyzer", layout="wide")
 
 import os
-from typing import Dict, List, Optional, TypedDict, Literal, Union, Annotated
+from typing import Dict, List, Optional, TypedDict, Literal, Union
 from dataclasses import dataclass
 from enum import Enum
 import pandas as pd
@@ -13,12 +13,11 @@ from langchain.agents import create_sql_agent
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
 from langchain_core.messages import SystemMessage, HumanMessage, AnyMessage
-from langgraph.graph import StateGraph, START, END
 from dotenv import load_dotenv
 import time
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+from anthropic import Anthropic
 import sqlite3
-import re
+import numpy as np
 
 # Load API keys from environment file
 load_dotenv('api_key.env')
@@ -234,10 +233,13 @@ class StockAnalyzer:
                 st.write("Using default value")
                 return default_value
             elif submit_modified:
-                st.write(f"Using modified value: {user_input}")
-                return user_input
+                if user_input.strip():  # Validate user input
+                    st.write(f"Using modified value: {user_input}")
+                    return user_input
+                else:
+                    st.warning("Input cannot be empty. Please provide a valid response.")
+                    return self._get_human_input(prompt, default_value)  # Retry input
                 
-            # Removed st.stop() to prevent the app from halting
             return default_value
             
         except Exception as e:
@@ -454,6 +456,19 @@ class StockAnalyzer:
                 st.write("Query Results:")
                 st.dataframe(df)
                 
+                # Add visualization if appropriate
+                if len(df) > 0:
+                    st.write("### Visualizations")
+                    if 'date' in df.columns:
+                        st.line_chart(df.set_index('date'))
+                    
+                    # Add correlation heatmap for numeric columns
+                    numeric_cols = df.select_dtypes(include=[np.number]).columns
+                    if len(numeric_cols) > 1:
+                        st.write("Correlation Heatmap")
+                        correlation = df[numeric_cols].corr()
+                        st.dataframe(correlation.style.background_gradient())
+                
             except Exception as e:
                 formatted_results = f"Error executing SQL: {str(e)}"
                 st.error(formatted_results)
@@ -546,6 +561,19 @@ class StockAnalyzer:
                     # Show results
                     st.write(f"Results for question {i}:")
                     st.dataframe(df)
+                    
+                    # Add visualization if appropriate
+                    if len(df) > 0:
+                        st.write("### Visualizations")
+                        if 'date' in df.columns:
+                            st.line_chart(df.set_index('date'))
+                        
+                        # Add correlation heatmap for numeric columns
+                        numeric_cols = df.select_dtypes(include=[np.number]).columns
+                        if len(numeric_cols) > 1:
+                            st.write("Correlation Heatmap")
+                            correlation = df[numeric_cols].corr()
+                            st.dataframe(correlation.style.background_gradient())
                     
                 except Exception as e:
                     parsed_result = f"Error executing SQL: {str(e)}"

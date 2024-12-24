@@ -26,9 +26,10 @@ On an average assuming 100 questions with 60% being easy and 40% being complex, 
 Deliverables:
 1) Create a dummy data, database schema is given in the file - Done
 2) Add memory and human in the loop to the agent - Done
-3) Examples of strategical level questions - Done
-4) Note of processing time - Done
-5) Output of the entire analysis (report), like ChatGPT output - Done
+3) Note of processing time - Done
+4) Output of the entire analysis (report), like ChatGPT output - Done
+5) No CSV uploading, direct SQL queries
+6) Examples of strategical level questions
 
 By Monday
 

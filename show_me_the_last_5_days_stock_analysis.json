@@ -3,14 +3,14 @@
   "user_query": "show me the last 5 days stock",
   "thought_process": "No thought process provided",
   "sql_query": "",
-  "results": "Error executing SQL: Could not extract SQL query from agent output",
+  "results": "Error executing SQL: name 're' is not defined",
   "raw_agent_output": "The last 5 days of stock data are:\n\nDate | open_price | close_price | high_price | low_price | volume\n-----|------------|-------------|------------|------------|--------\n2023-12-22 | 195.94 | 196.03 | 196.39 | 195.47 | 38895600.0\n2023-12-21 | 194.72 | 195.66 | 195.72 | 194.14 | 46524000.0  \n2023-12-20 | 196.9 | 194.83 | 197.68 | 194.83 | 52242800.0\n2023-12-19 | 196.16 | 196.94 | 196.95 | 195.89 | 40714100.0\n2023-12-18 | 196.09 | 195.89 | 196.63 | 194.39 | 55751900.0\n\nThe data shows the daily open, close, high, low prices and trading volume over the last 5 trading days for the stock.",
-  "timestamp": "2024-12-23T21:09:57.809735",
+  "timestamp": "2024-12-24T11:47:06.205160",
   "token_usage": {
     "prompt_tokens": 355,
     "completion_tokens": 2
   },
-  "processing_time": 17.95902681350708,
+  "processing_time": 17.851929187774658,
   "agent_state": {
     "input": "show me the last 5 days stock",
     "output": "The last 5 days of stock data are:\n\nDate | open_price | close_price | high_price | low_price | volume\n-----|------------|-------------|------------|------------|--------\n2023-12-22 | 195.94 | 196.03 | 196.39 | 195.47 | 38895600.0\n2023-12-21 | 194.72 | 195.66 | 195.72 | 194.14 | 46524000.0  \n2023-12-20 | 196.9 | 194.83 | 197.68 | 194.83 | 52242800.0\n2023-12-19 | 196.16 | 196.94 | 196.95 | 195.89 | 40714100.0\n2023-12-18 | 196.09 | 195.89 | 196.63 | 194.39 | 55751900.0\n\nThe data shows the daily open, close, high, low prices and trading volume over the last 5 trading days for the stock."
