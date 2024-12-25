@@ -18,6 +18,7 @@ import time
 from anthropic import Anthropic
 import sqlite3
 import numpy as np
+import re  # Added import for regex
 
 # Load API keys from environment file
 load_dotenv('api_key.env')
@@ -55,10 +56,8 @@ class ConfigError(Exception):
 
 @dataclass
 class Config:
-    db_path: str
-    sqlite_path: str = "sqlite:///consumption.db"
+    db_path: str = "final_working_database.db"  # Fixed database path
     model_name: str = "claude-3-sonnet-20240229"
-    human_in_the_loop: bool = False
     
     @property
     def api_key(self) -> str:
@@ -82,7 +81,14 @@ Question: "What are the emerging trends in trading volume and their impact on pr
 Classification: analysis
 Explanation: This requires complex analysis of relationships and patterns.
 
-Respond in JSON format:
+If the query is ambiguous or needs clarification, respond with:
+{
+    "needs_human_input": true,
+    "question": "Your clarifying question",
+    "context": "Why you need clarification"
+}
+
+Otherwise respond in JSON format:
 {
     "type": "direct_sql" or "analysis",
     "explanation": "brief explanation of classification"
@@ -93,6 +99,20 @@ SQL_AGENT_PROMPT = """You are an expert financial database analyst. Your task is
 1. Analyze stock market queries
 2. Create appropriate SQL queries
 3. Provide clear results
+
+If you encounter any of these situations:
+- Missing or incomplete data
+- Ambiguous query requirements
+- Multiple possible interpretations
+- Need for additional context
+
+ASK the human for clarification by responding with:
+{
+    "needs_human_input": true,
+    "question": "Your specific question for clarification",
+    "context": "Why you need this clarification",
+    "options": ["Possible option 1", "Possible option 2"] (optional)
+}
 
 Example 1:
 User: "What's the stock's performance last week?"
@@ -134,10 +154,25 @@ LIMIT 5;
 
 Your responses should include:
 1. Thought process
-2. SQL query
+2. SQL query or human input request
 3. Result interpretation"""
 
 ANALYST_PROMPT = """You are an expert financial analyst. Analyze the provided SQL results and provide insights.
+
+If you encounter any of these situations:
+- Unclear patterns in the data
+- Multiple possible interpretations
+- Need for additional context
+- Insufficient data for confident conclusions
+
+ASK the human for input by responding with:
+{
+    "needs_human_input": true,
+    "question": "Your specific question",
+    "context": "Why you need this input",
+    "current_interpretation": "Your current understanding",
+    "options": ["Possible interpretation 1", "Possible interpretation 2"] (optional)
+}
 
 Focus on:
 1. Price trends and patterns
@@ -180,21 +215,10 @@ class StockAnalyzer:
         self.anthropic_client = Anthropic(api_key=config.api_key)
         self.agent_states = {}
         self.raw_responses = {}
-        self.conn = sqlite3.connect('consumption.db')
+        self.conn = sqlite3.connect(self.config.db_path)  # Use the fixed database path
 
     def _init_database(self) -> SQLDatabase:
-        return SQLDatabase.from_uri(self.config.sqlite_path)
-
-    @staticmethod
-    def initialize_database(csv_path: str) -> None:
-        try:
-            # Create SQLite database from CSV
-            df = pd.read_csv(csv_path)
-            conn = sqlite3.connect('consumption.db')
-            df.to_sql('consumption', conn, if_exists='replace', index=False)
-            conn.close()
-        except Exception as e:
-            raise ConfigError(f"Failed to initialize database: {str(e)}")
+        return SQLDatabase.from_uri(f"sqlite:///{self.config.db_path}")
 
     def _init_llm(self) -> ChatAnthropic:
         return ChatAnthropic(
@@ -213,40 +237,28 @@ class StockAnalyzer:
             prefix=SQL_AGENT_PROMPT
         )
 
-    def _get_human_input(self, prompt: str, default_value=None) -> str:
-        if not self.config.human_in_the_loop:
-            return default_value
+    def _get_human_input(self, prompt: Dict) -> Optional[str]:
+        """Get human input when the agent determines it's needed"""
+        if not isinstance(prompt, dict) or not prompt.get('needs_human_input'):
+            return None
             
-        # For Streamlit UI
-        try:
-            st.write("Human Review Required:")
-            st.write(prompt)
-            user_input = st.text_input("Enter your response or press Enter to accept default:", value=default_value)
+        st.write("### Human Input Needed")
+        st.write(f"**Question:** {prompt.get('question')}")
+        st.write(f"**Context:** {prompt.get('context')}")
+        
+        if 'current_interpretation' in prompt:
+            st.write(f"**Current Interpretation:** {prompt.get('current_interpretation')}")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                accept_default = st.button("Accept Default", key=f"accept_{prompt[:20]}")
-            with col2:
-                submit_modified = st.button("Submit Modified Value", key=f"submit_{prompt[:20]}")
+        if 'options' in prompt and isinstance(prompt['options'], list):
+            response = st.radio("Select an option:", prompt['options'])
+        else:
+            response = st.text_input("Your response:")
             
-            if accept_default:
-                st.write("Using default value")
-                return default_value
-            elif submit_modified:
-                if user_input.strip():  # Validate user input
-                    st.write(f"Using modified value: {user_input}")
-                    return user_input
-                else:
-                    st.warning("Input cannot be empty. Please provide a valid response.")
-                    return self._get_human_input(prompt, default_value)  # Retry input
-                
-            return default_value
-            
-        except Exception as e:
-            st.error(f"Error in human input: {str(e)}")
-            # For command line
-            response = input(f"\n{prompt}\nPress Enter to accept default or input your modification: ")
-            return response if response.strip() else default_value
+        submit = st.button("Submit Response")
+        
+        if submit and response:  # Only return if there's a response and submit is clicked
+            return response
+        return None
 
     def analyze(self, query: str) -> Dict:
         start_time = time.time()
@@ -259,90 +271,50 @@ class StockAnalyzer:
             # First, classify the query
             classification = self._classify_query(query)
             
+            if not classification:  # Add error handling for failed classification
+                raise ValueError("Query classification failed")
+                
             # Show classification response
             st.write("### Query Classification")
             st.write(f"Type: {classification.type.value}")
             st.write(f"Explanation: {classification.explanation}")
-            st.write("Raw Response:")
-            st.code(classification.raw_response)
-            
-            # Human review of classification if enabled
-            if self.config.human_in_the_loop:
-                st.subheader("Query Classification Review")
-                human_classification = self._get_human_input(
-                    f"Query Classification: {classification.type.value}\nExplanation: {classification.explanation}\n"
-                    "Enter 'direct_sql' or 'analysis' to modify, or press Enter to accept: ",
-                    classification.type.value
-                )
-                if human_classification in ['direct_sql', 'analysis']:
-                    classification.type = QueryType(human_classification)
-                    st.write(f"Classification updated to: {human_classification}")
             
             # For direct SQL queries, use simplified processing
             if classification.type == QueryType.DIRECT_SQL:
                 result = self._direct_sql_query(query)
-                # Show the JSON output
-                st.write("### Analysis Output (JSON)")
-                st.json(result)
-                return result
+                if result:  # Add error handling for failed direct SQL query
+                    st.write("### Analysis Output (JSON)")
+                    st.json(result)
+                    return result
+                raise ValueError("Direct SQL query failed")
             
             # For analysis queries, use decomposition approach
             decomposed_questions = self._decompose_question(query)
             
-            # Show decomposed questions
+            if not decomposed_questions:  # Add error handling for failed decomposition
+                raise ValueError("Question decomposition failed")
+            
             st.write("### Decomposed Questions")
             for i, q in enumerate(decomposed_questions, 1):
                 st.write(f"{i}. {q}")
             
-            # Human review of decomposed questions if enabled
-            if self.config.human_in_the_loop:
-                st.subheader("Review Decomposed Questions")
-                for i, q in enumerate(decomposed_questions):
-                    modified_q = self._get_human_input(f"Question {i+1}: {q}", q)
-                    decomposed_questions[i] = modified_q
-                    st.write(f"Updated Question {i+1}: {modified_q}")
-            
             sql_results = self._run_sql_analysis(decomposed_questions)
             
-            # Show SQL results
+            if not sql_results:  # Add error handling for failed SQL analysis
+                raise ValueError("SQL analysis failed")
+            
             st.write("### SQL Analysis Results")
             for key, data in sql_results.items():
                 st.write(f"\n**{key}:**")
                 st.json(data)
             
-            # Human review of SQL results if enabled
-            if self.config.human_in_the_loop:
-                st.subheader("Review SQL Results")
-                for key, data in sql_results.items():
-                    if 'sql' in data:
-                        modified_sql = self._get_human_input(f"Review SQL for {key}:\n{data['sql']}", data['sql'])
-                        if modified_sql != data['sql']:
-                            try:
-                                df = pd.read_sql_query(modified_sql, self.conn)
-                                data['sql'] = modified_sql
-                                data['result'] = df.to_dict('records')
-                                st.write(f"Updated SQL for {key}")
-                                st.code(modified_sql, language="sql")
-                            except Exception as e:
-                                st.error(f"Error with modified SQL: {str(e)}")
-            
             analysis = self._analyze_results(query, sql_results)
             
-            # Show analysis
+            if not analysis:  # Add error handling for failed analysis
+                raise ValueError("Results analysis failed")
+            
             st.write("### Expert Analysis")
             st.write(analysis)
-            
-            # Human review of analysis if enabled
-            if self.config.human_in_the_loop:
-                st.subheader("Review Analysis")
-                modified_analysis = self._get_human_input(
-                    f"Review Analysis:\n{analysis}\nEnter modifications or press Enter to accept: ",
-                    analysis
-                )
-                if modified_analysis != analysis:
-                    analysis = modified_analysis
-                    st.write("Updated Analysis:")
-                    st.write(modified_analysis)
             
             processing_time = time.time() - start_time
             
@@ -351,8 +323,7 @@ class StockAnalyzer:
                 "user_query": query,
                 "query_classification": {
                     "type": classification.type.value,
-                    "explanation": classification.explanation,
-                    "raw_response": classification.raw_response
+                    "explanation": classification.explanation
                 },
                 "sub_questions": decomposed_questions,
                 "sql_analysis": sql_results,
@@ -364,7 +335,13 @@ class StockAnalyzer:
                 "raw_responses": self.raw_responses
             }
             
-            # Save and show output
+            # Pass the database schema to the LLM
+            schema_info = self._get_database_schema()
+            self.llm.invoke([
+                SystemMessage(content="Provide the database schema."),
+                HumanMessage(content=schema_info)
+            ])
+            
             filename = f"{query[:50].replace(' ', '_').lower()}_analysis.json"
             with open(filename, 'w') as f:
                 json.dump(final_output, f, indent=2)
@@ -381,7 +358,22 @@ class StockAnalyzer:
         finally:
             self.conn.close()
 
-    def _classify_query(self, query: str) -> QueryClassification:
+    def _get_database_schema(self) -> str:
+        """Retrieve the database schema as a string."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        schema_info = ""
+        for table in tables:
+            table_name = table[0]
+            schema_info += f"Table: {table_name}\n"
+            cursor.execute(f"PRAGMA table_info({table_name});")
+            columns = cursor.fetchall()
+            for column in columns:
+                schema_info += f"  Column: {column[1]} - Type: {column[2]}\n"
+        return schema_info
+
+    def _classify_query(self, query: str) -> Optional[QueryClassification]:
         try:
             st.write("Classifying query...")
             response = self.llm.invoke([
@@ -389,80 +381,81 @@ class StockAnalyzer:
                 HumanMessage(content=f"Classify this question: {query}")
             ])
             
-            # Show raw response
-            st.code(response.content)
-            
             self._update_token_usage(response)
-            classification = json.loads(response.content)
+            
+            try:
+                parsed_response = json.loads(response.content)
+            except json.JSONDecodeError:
+                st.error("Failed to parse classification response")
+                return None
+            
+            # Check if human input is needed
+            if parsed_response.get('needs_human_input'):
+                human_response = self._get_human_input(parsed_response)
+                if human_response:
+                    # Retry classification with human input
+                    return self._classify_query(f"{query} ({human_response})")
+                return None  # Return None if no human input provided
+            
+            if 'type' not in parsed_response or 'explanation' not in parsed_response:
+                st.error("Invalid classification response format")
+                return None
             
             self.raw_responses['classification'] = response.content
             
             return QueryClassification(
-                type=QueryType(classification['type']),
-                explanation=classification['explanation'],
+                type=QueryType(parsed_response['type']),
+                explanation=parsed_response['explanation'],
                 raw_response=response.content
             )
         except Exception as e:
             st.error(f"Classification error: {str(e)}")
-            return QueryClassification(
-                type=QueryType.ANALYSIS,
-                explanation="Classification failed, defaulting to analysis",
-                raw_response=str(e)
-            )
+            return None
 
-    def _direct_sql_query(self, query: str) -> Dict:
+    def _direct_sql_query(self, query: str) -> Optional[Dict]:
         start_time = time.time()
         try:
             st.write("Executing direct SQL query...")
             result = self.sql_agent.invoke({"input": query})
             
-            # Show agent's thought process
-            st.write("Agent's Response:")
-            st.code(result['output'])
+            if not result or not isinstance(result, dict):
+                return None
             
             self._update_token_usage(result)
-            
             self.agent_states['direct_sql'] = result
+            
+            # Check if agent needs human input
+            if result.get('needs_human_input'):
+                human_response = self._get_human_input(result)
+                if human_response:
+                    # Retry query with human input
+                    return self._direct_sql_query(f"{query} ({human_response})")
+                return None  # Return None if no human input provided
             
             thought = self._extract_thought(result['output'])
             sql = self._extract_sql(result['output'])
             
-            # Human review of SQL if enabled
-            if self.config.human_in_the_loop:
-                st.subheader("Review SQL Query")
-                modified_sql = self._get_human_input(
-                    f"Review SQL Query:\n{sql}\nEnter modifications or press Enter to accept: ",
-                    sql
-                )
-                if modified_sql != sql:
-                    sql = modified_sql
-                    st.write("Using modified SQL:")
-                    st.code(modified_sql, language="sql")
+            if not sql:
+                sql_match = re.search(r'SELECT.*?;', result['output'], re.DOTALL | re.IGNORECASE)
+                if sql_match:
+                    sql = sql_match.group(0)
+                else:
+                    st.error("Could not extract SQL query from agent output")
+                    return None
             
             try:
-                if not sql:
-                    sql_match = re.search(r'SELECT.*?;', result['output'], re.DOTALL | re.IGNORECASE)
-                    if sql_match:
-                        sql = sql_match.group(0)
-                    else:
-                        raise ValueError("Could not extract SQL query from agent output")
-                
                 sql = sql.split(';')[0] + ';'
-                
                 df = pd.read_sql_query(sql, self.conn)
                 formatted_results = df.to_dict('records')
                 
-                # Show results
                 st.write("Query Results:")
                 st.dataframe(df)
                 
-                # Add visualization if appropriate
                 if len(df) > 0:
                     st.write("### Visualizations")
                     if 'date' in df.columns:
                         st.line_chart(df.set_index('date'))
                     
-                    # Add correlation heatmap for numeric columns
                     numeric_cols = df.select_dtypes(include=[np.number]).columns
                     if len(numeric_cols) > 1:
                         st.write("Correlation Heatmap")
@@ -507,11 +500,21 @@ class StockAnalyzer:
             HumanMessage(content=query)
         ])
         
-        # Show decomposition response
-        st.code(response.content)
-        
         self._update_token_usage(response)
         self.raw_responses['decomposition'] = response.content
+        
+        # Check if agent needs human input
+        try:
+            parsed_response = json.loads(response.content)
+            if parsed_response.get('needs_human_input'):
+                # Only ask for human input if the query is ambiguous
+                if "ambiguous" in parsed_response.get('context', '').lower():
+                    human_response = self._get_human_input(parsed_response)
+                    if human_response:
+                        # Retry decomposition with human input
+                        return self._decompose_question(f"{query} ({human_response})")
+        except json.JSONDecodeError:
+            pass
         
         questions = [
             q.strip().split(". ", 1)[1] if ". " in q else q.strip()
@@ -530,45 +533,34 @@ class StockAnalyzer:
                 st.write(f"Analyzing question {i}: {question}")
                 result = self.sql_agent.invoke({"input": question})
                 
-                # Show agent's response
-                st.write(f"Agent's response for question {i}:")
-                st.code(result['output'])
-                
                 self._update_token_usage(result)
-                
                 agent_states[f"question_{i}"] = result
+                
+                # Check if agent needs human input
+                if isinstance(result, dict) and result.get('needs_human_input'):
+                    # Only ask for human input if the query is ambiguous
+                    if "ambiguous" in result.get('context', '').lower():
+                        human_response = self._get_human_input(result)
+                        if human_response:
+                            # Retry analysis with human input
+                            result = self.sql_agent.invoke({"input": f"{question} ({human_response})"})
                 
                 thought = self._extract_thought(result['output'])
                 sql = self._extract_sql(result['output'])
-                
-                # Human review of SQL if enabled
-                if self.config.human_in_the_loop:
-                    st.subheader(f"Review SQL for Question {i}")
-                    modified_sql = self._get_human_input(
-                        f"Review SQL Query:\n{sql}\nEnter modifications or press Enter to accept: ",
-                        sql
-                    )
-                    if modified_sql != sql:
-                        sql = modified_sql
-                        st.write("Using modified SQL:")
-                        st.code(modified_sql, language="sql")
                 
                 try:
                     sql = sql.split(';')[0] + ';'
                     df = pd.read_sql_query(sql, self.conn)
                     parsed_result = df.to_dict('records')
                     
-                    # Show results
                     st.write(f"Results for question {i}:")
                     st.dataframe(df)
                     
-                    # Add visualization if appropriate
                     if len(df) > 0:
                         st.write("### Visualizations")
                         if 'date' in df.columns:
                             st.line_chart(df.set_index('date'))
                         
-                        # Add correlation heatmap for numeric columns
                         numeric_cols = df.select_dtypes(include=[np.number]).columns
                         if len(numeric_cols) > 1:
                             st.write("Correlation Heatmap")
@@ -611,23 +603,21 @@ class StockAnalyzer:
             Provide a comprehensive analysis.""")
         ])
         
-        # Show analysis response
-        st.code(response.content)
-        
         self._update_token_usage(response)
         self.raw_responses['analysis'] = response.content
         
-        # Human review of analysis if enabled
-        if self.config.human_in_the_loop:
-            st.subheader("Review Analysis")
-            modified_analysis = self._get_human_input(
-                f"Review Analysis:\n{response.content}\nEnter modifications or press Enter to accept: ",
-                response.content
-            )
-            if modified_analysis != response.content:
-                response.content = modified_analysis
-                st.write("Updated Analysis:")
-                st.write(modified_analysis)
+        # Check if analyst needs human input
+        try:
+            parsed_response = json.loads(response.content)
+            if parsed_response.get('needs_human_input'):
+                # Only ask for human input if the analysis is ambiguous
+                if "ambiguous" in parsed_response.get('context', '').lower():
+                    human_response = self._get_human_input(parsed_response)
+                    if human_response:
+                        # Retry analysis with human input
+                        return self._analyze_results(query, sql_results)
+        except json.JSONDecodeError:
+            pass
         
         return response.content
 
@@ -645,16 +635,6 @@ class StockAnalyzer:
                 usage = response.usage
                 self.token_usage["prompt_tokens"] += usage.input_tokens if hasattr(usage, 'input_tokens') else 0
                 self.token_usage["completion_tokens"] += usage.output_tokens if hasattr(usage, 'output_tokens') else 0
-            else:
-                message = response.content if hasattr(response, 'content') else str(response)
-                result = self.anthropic_client.messages.create(
-                    model=self.config.model_name,
-                    messages=[{"role": "user", "content": message}],
-                    max_tokens=1
-                )
-                if hasattr(result, 'usage'):
-                    self.token_usage["prompt_tokens"] += result.usage.input_tokens
-                    self.token_usage["completion_tokens"] += result.usage.output_tokens
         except Exception as e:
             st.warning(f"Error updating token usage: {str(e)}")
 
@@ -725,10 +705,9 @@ def format_output(results: Dict) -> str:
     
     return "\n".join(output)
 
-def analyze_stock_query(query: str, csv_file: str, human_in_the_loop: bool = False) -> str:
+def analyze_stock_query(query: str) -> str:  # Removed db_path parameter
     try:
-        config = Config(db_path=csv_file, human_in_the_loop=human_in_the_loop)
-        StockAnalyzer.initialize_database(csv_file)
+        config = Config()  # Use the fixed database path
         analyzer = StockAnalyzer(config)
         results = analyzer.analyze(query)
         
@@ -736,36 +715,34 @@ def analyze_stock_query(query: str, csv_file: str, human_in_the_loop: bool = Fal
             formatted_output = format_output(results)
             filename = f"{query[:50].replace(' ', '_').lower()}_analysis.json"
             
-            # Read and display saved JSON
-            with open(filename, 'r') as f:
-                saved_results = json.load(f)
+            with open(filename, 'w') as f:
+                json.dump(results, f, indent=2)
             
-            # Print output in Streamlit
             st.markdown("### Analysis Results")
-            st.write(f"**Query:** {saved_results.get('user_query', 'N/A')}")
+            st.write(f"**Query:** {results.get('user_query', 'N/A')}")
             
-            st.write(f"**Processing Time:** {saved_results.get('processing_time', 0):.2f} seconds")
-            token_usage = saved_results.get('token_usage', {})
+            st.write(f"**Processing Time:** {results.get('processing_time', 0):.2f} seconds")
+            token_usage = results.get('token_usage', {})
             st.write("**Token Usage:**")
             st.write(f"- Prompt Tokens: {token_usage.get('prompt_tokens', 0)}")
             st.write(f"- Completion Tokens: {token_usage.get('completion_tokens', 0)}")
             st.write(f"- Total Tokens: {token_usage.get('prompt_tokens', 0) + token_usage.get('completion_tokens', 0)}")
             
-            if saved_results.get('query_type') == 'direct_sql':
-                st.write(f"**Thought Process:** {saved_results.get('thought_process', 'N/A')}")
-                st.code(saved_results.get('sql_query', 'N/A'), language='sql')
+            if results.get('query_type') == 'direct_sql':
+                st.write(f"**Thought Process:** {results.get('thought_process', 'N/A')}")
+                st.code(results.get('sql_query', 'N/A'), language='sql')
                 st.write("**Results:**")
-                if isinstance(saved_results.get('results'), list):
-                    st.dataframe(pd.DataFrame(saved_results['results']))
+                if isinstance(results.get('results'), list):
+                    st.dataframe(pd.DataFrame(results['results']))
                 else:
-                    st.write(saved_results.get('results', 'No results available'))
+                    st.write(results.get('results', 'No results available'))
             else:
                 st.write("**Sub-Questions:**")
-                for i, q in enumerate(saved_results.get('sub_questions', []), 1):
+                for i, q in enumerate(results.get('sub_questions', []), 1):
                     st.write(f"{i}. {q}")
                 
                 st.write("**SQL Analysis:**")
-                for key, data in saved_results.get('sql_analysis', {}).items():
+                for key, data in results.get('sql_analysis', {}).items():
                     st.write(f"\nQuestion: {data.get('question', 'N/A')}")
                     if 'error' not in data:
                         st.write(f"Thought Process: {data.get('thought', 'N/A')}")
@@ -781,7 +758,7 @@ def analyze_stock_query(query: str, csv_file: str, human_in_the_loop: bool = Fal
                         st.error(f"Error: {data['error']}")
                 
                 st.write("**Expert Analysis:**")
-                st.write(saved_results.get('expert_analysis', 'No analysis available'))
+                st.write(results.get('expert_analysis', 'No analysis available'))
             
             st.success(f"Detailed results saved to {filename}")
             return formatted_output
@@ -795,56 +772,31 @@ def analyze_stock_query(query: str, csv_file: str, human_in_the_loop: bool = Fal
 # Save this file as stock_analyzer.py
 if __name__ == "__main__":
     st.title("Stock Market Data Analyzer")
-    st.write("Upload your stock market data CSV file and analyze it using natural language queries.")
+    st.write("Analyze stock market data using natural language queries.")
 
-    # File upload
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-
-    if uploaded_file is not None:
-        # Save uploaded file temporarily
-        with open("temp.csv", "wb") as f:
-            f.write(uploaded_file.getvalue())
-        
-        # Display sample data
-        df = pd.read_csv("temp.csv")
-        st.subheader("Preview of uploaded data")
-        st.dataframe(df.head())
-        
-        # Enable human-in-the-loop option
-        human_in_the_loop = st.checkbox("Enable Human-in-the-Loop Analysis", value=False)
-        
-        # Number of questions input
-        num_questions = st.number_input("How many questions would you like to ask?", min_value=1, max_value=10, value=1)
-        
-        # Create text input fields for each question
-        questions = []
-        for i in range(int(num_questions)):
-            question = st.text_input(f"Question {i+1}", key=f"question_{i}")
-            questions.append(question)
-        
-        # Analysis button
-        if st.button("Analyze Questions"):
-            if all(questions):
-                progress_bar = st.progress(0)
-                for i, query in enumerate(questions, 1):
-                    st.subheader(f"Analysis for Question {i}: {query}")
-                    progress_text = st.empty()
-                    progress_text.text("Analyzing...")
-                    
-                    try:
-                        with st.spinner(f"Analyzing question {i}..."):
-                            result = analyze_stock_query(query, "temp.csv", human_in_the_loop)
-                            st.write(result)
-                        progress_bar.progress(i/len(questions))
-                    except Exception as e:
-                        st.error(f"Error analyzing question {i}: {str(e)}")
-                    
-                    progress_text.empty()
-            else:
-                st.warning("Please fill in all question fields")
-
-        # Cleanup
-        if os.path.exists("temp.csv"):
-            os.remove("temp.csv")
-    else:
-        st.info("Please upload a CSV file to begin analysis")
+    num_questions = st.number_input("How many questions would you like to ask?", min_value=1, max_value=10, value=1)
+    
+    questions = []
+    for i in range(int(num_questions)):
+        question = st.text_input(f"Question {i+1}", key=f"question_{i}")
+        questions.append(question)
+    
+    if st.button("Analyze Questions"):
+        if all(questions):
+            progress_bar = st.progress(0)
+            for i, query in enumerate(questions, 1):
+                st.subheader(f"Analysis for Question {i}: {query}")
+                progress_text = st.empty()
+                progress_text.text("Analyzing...")
+                
+                try:
+                    with st.spinner(f"Analyzing question {i}..."):
+                        result = analyze_stock_query(query)  # No db_path parameter
+                        st.write(result)
+                    progress_bar.progress(i/len(questions))
+                except Exception as e:
+                    st.error(f"Error analyzing question {i}: {str(e)}")
+                
+                progress_text.empty()
+        else:
+            st.warning("Please fill in all question fields")

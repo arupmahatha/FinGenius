@@ -28,9 +28,49 @@ Deliverables:
 2) Add memory and human in the loop to the agent - Done
 3) Note of processing time - Done
 4) Output of the entire analysis (report), like ChatGPT output - Done
-5) No CSV uploading, direct SQL queries
-6) Examples of strategical level questions
+5) No CSV uploading, direct SQL queries - Done
+6) Examples of strategical level questions - Done
 
 By Monday
 
 POC: 27th Dec, Host it in Streamlit
+
+
+
+# Statergic Level Questions
+Based on the provided CSV files which contain financial data including balance sheets, income statements, budgets, and forecasts, here are some strategic-level analytical questions that would be valuable for a financial analyst:
+
+1. **Strategic Performance Analysis Question:**
+"How does the EBITDA margin trend compare between AC Wailea and Surfrider Malibu properties over the past 12 months, and what are the key drivers behind any significant variances from budgeted figures?"
+
+This question would help analyze:
+- Operational efficiency
+- Property-wise performance comparison
+- Budget accuracy and variance analysis
+- Trend identification in profitability
+
+2. **Revenue Optimization Question:**
+"What is the correlation between occupancy rates and average daily rates (ADR) for both properties, and how does this relationship impact the overall RevPAR performance compared to budgeted targets?"
+
+This analysis would reveal:
+- Pricing strategy effectiveness
+- Revenue management opportunities
+- Market positioning
+- Demand patterns
+
+3. **Cost Structure Analysis Question:**
+"How have the operating expense ratios (particularly in rooms and F&B departments) evolved over the past year for both properties, and what impact have these changes had on the gross operating profit margins compared to industry benchmarks?"
+
+This would help understand:
+- Cost control effectiveness
+- Departmental efficiency
+- Margin management
+- Operational scalability
+
+These questions leverage data from multiple tables in your database:
+- `final_income_sheet_new_seq.csv` for EBITDA and departmental performance
+- `final_budget_sheet.csv` for occupancy, ADR, and RevPAR targets
+- `final_forecast_sheet.csv` for forward-looking metrics
+- `final_income_sheet_tb_new.csv` for detailed expense analysis
+
+Would you like me to elaborate on how to structure SQL queries for any of these analytical questions?
