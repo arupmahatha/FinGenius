@@ -74,3 +74,9 @@ These questions leverage data from multiple tables in your database:
 - `final_income_sheet_tb_new.csv` for detailed expense analysis
 
 Would you like me to elaborate on how to structure SQL queries for any of these analytical questions?
+
+
+Input tokens when passed each time (Before): 1,917, 2,229 // 
+Output tokens when passed once at the beginning (After): 1,590 // 2,836,3,992 // // 
+
+Time(Before): 237.16919827461243, 319.788419008255 // 782.089762210846
