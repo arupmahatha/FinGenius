@@ -79,28 +79,26 @@ class DatabaseAnalyst:
             api_key=config.api_key
         )
         
-        # This SQL agent handles all database interactions
+        # Create database and toolkit once
+        self.db = SQLDatabase.from_uri(config.sqlite_path)
+        self.sql_toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
+        
+        # Use the existing toolkit
         self.sql_agent = create_sql_agent(
             llm=self.llm,
-            toolkit=SQLDatabaseToolkit(
-                db=SQLDatabase.from_uri(config.sqlite_path),
-                llm=self.llm
-            ),
+            toolkit=self.sql_toolkit,
             verbose=True,
             agent_type="zero-shot-react-description",
             handle_parsing_errors=True
         )
         
         self.workflow = self._setup_workflow()
-        self.query_cache = {}  # Cache for storing previous query results
+        self.query_cache = {}
 
     def _setup_workflow(self) -> StateGraph:
         workflow = StateGraph(AnalysisState)
 
-        # Initialize SQL tools with memory
-        db_chain = SQLDatabase.from_uri(self.config.sqlite_path)
-        sql_toolkit = SQLDatabaseToolkit(db=db_chain, llm=self.llm)
-        
+        # Use the existing toolkit instead of creating new ones
         def process_query(state: AnalysisState) -> AnalysisState:
             try:
                 # Add explicit format instructions
@@ -345,7 +343,20 @@ def main():
                     if "error" in results:
                         st.error(results["error"])
                     else:
+                        # Display formatted output
+                        st.write("### Analysis Results")
                         st.write(format_output(results))
+                        
+                        # Display JSON results in an expandable section
+                        with st.expander("View Raw JSON Results"):
+                            # Create tabs for different views
+                            json_tab, pretty_tab = st.tabs(["JSON", "Pretty View"])
+                            
+                            with json_tab:
+                                st.code(json.dumps(results, indent=2), language='json')
+                            
+                            with pretty_tab:
+                                st.json(results)
                         
                         # Add download button for detailed results
                         filename = f"{query[:50].replace(' ', '_').lower()}_analysis.json"
