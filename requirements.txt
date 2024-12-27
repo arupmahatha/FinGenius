@@ -1,7 +1,6 @@
 # requirements.txt
 
 # General libraries
-os
 pandas
 json
 re
