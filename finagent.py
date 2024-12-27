@@ -19,6 +19,9 @@ import streamlit as st
 from langgraph.graph import StateGraph, END
 from langchain.tools.sql_database.tool import QuerySQLDataBaseTool
 from langchain_core.tools import Tool
+from functools import lru_cache
+import hashlib
+import pickle
 
 # Initialize memory for state management
 memory = {}  # Using a simple dictionary for in-memory storage
@@ -57,214 +60,187 @@ class Config:
     sqlite_path: str = "sqlite:///final_working_database.db"
     model_name: str = "claude-3-sonnet-20240229"
     api_key: str = ""  # Anthropic API key
+    cache_enabled: bool = True
+    cache_dir: str = ".cache"
+    cache_ttl: int = 86400  # Cache TTL in seconds (24 hours)
 
 # Part 3: Prompt Templates
-QUERY_CLASSIFIER_PROMPT = """Classify if this query needs:
-1. direct_sql: Simple SQL query
-2. analysis: Complex analysis with multiple queries
-Return JSON: {"type": "direct_sql"|"analysis", "confidence": 0-1}"""
+SYSTEM_SQL_PROMPT = """Return only SQL query between ```sql tags that calculates metrics. Format:
+WITH metrics AS (
+    SELECT 'Metric Name' as metric_name, calculated_value as value
+    FROM relevant_tables
+    -- Use appropriate joins if needed
+)
+SELECT metric_name, value FROM metrics;"""
 
-SQL_AGENT_PROMPT = """Create SQL queries for the given questions. 
-Include: thought process, SQL query, and result interpretation."""
+METRIC_CALCULATION_PROMPT = """Write a SQL query that calculates specific metrics for this question. 
+Use CTEs and subqueries for complex calculations. 
+Return ONLY calculated values, not raw data. 
+Question: {question}"""
 
-ANALYST_PROMPT = """Analyze the SQL results and provide key insights."""
+ANALYSIS_PROMPT = """Analyze these calculated metrics and provide insights:
+
+Question: {question}
+Calculated Metrics: {metrics}
+
+Please provide:
+1. Interpretation of each metric
+2. Notable patterns or trends
+3. Business implications
+4. Potential areas for improvement"""
+
+SYNTHESIS_PROMPT = """Synthesize the following analysis results into a coherent summary:
+{results}
+
+Provide:
+1. Overall findings
+2. Connections between different questions
+3. Key insights from the combined analysis"""
 
 # Part 4: Main DatabaseAnalyst Class
 class DatabaseAnalyst:
     def __init__(self, config: Config):
-        self.config = config
         self.llm = ChatAnthropic(
             model=config.model_name,
             temperature=0,
             api_key=config.api_key
         )
         
-        # Create database and toolkit once
-        self.db = SQLDatabase.from_uri(config.sqlite_path)
-        self.sql_toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
+        self.db_connection = sqlite3.connect(config.db_path)
+        self.db = SQLDatabase.from_uri(
+            config.sqlite_path,
+            sample_rows_in_table_info=0,
+            view_support=False,
+            indexes_in_table_info=False
+        )
         
-        # Use the existing toolkit
+        self.sql_toolkit = SQLDatabaseToolkit(
+            db=self.db,
+            llm=self.llm
+        )
+        
         self.sql_agent = create_sql_agent(
             llm=self.llm,
             toolkit=self.sql_toolkit,
-            verbose=True,
+            verbose=False,
             agent_type="zero-shot-react-description",
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            agent_kwargs={
+                "system_message": SYSTEM_SQL_PROMPT
+            }
         )
         
-        self.workflow = self._setup_workflow()
-        self.query_cache = {}
+        # Initialize both query and prompt caches
+        self.cache_file = ".query_cache.pkl"
+        self.prompt_cache_file = ".prompt_cache.pkl"
+        self.load_caches()
 
-    def _setup_workflow(self) -> StateGraph:
-        workflow = StateGraph(AnalysisState)
+    def load_caches(self):
+        """Load both caches from files"""
+        try:
+            with open(self.cache_file, 'rb') as f:
+                self.query_cache = pickle.load(f)
+        except FileNotFoundError:
+            self.query_cache = {}
+            
+        try:
+            with open(self.prompt_cache_file, 'rb') as f:
+                self.prompt_cache = pickle.load(f)
+        except FileNotFoundError:
+            self.prompt_cache = {}
 
-        # Use the existing toolkit instead of creating new ones
-        def process_query(state: AnalysisState) -> AnalysisState:
-            try:
-                # Add explicit format instructions
-                formatted_query = (
-                    "Follow these steps:\n"
-                    "1. Think about the query\n"
-                    "2. Write the SQL query\n"
-                    "3. Execute the query\n"
-                    "4. Analyze the results\n\n"
-                    f"Question: {state['user_query']}"
-                )
-                
+    def save_caches(self):
+        """Save both caches to files"""
+        with open(self.cache_file, 'wb') as f:
+            pickle.dump(self.query_cache, f)
+        with open(self.prompt_cache_file, 'wb') as f:
+            pickle.dump(self.prompt_cache, f)
+
+    def get_cache_key(self, text: str) -> str:
+        """Generate cache key"""
+        return hashlib.md5(text.lower().strip().encode()).hexdigest()
+
+    def get_cached_prompt_response(self, prompt: str) -> Optional[str]:
+        """Get cached prompt response if exists"""
+        cache_key = self.get_cache_key(prompt)
+        return self.prompt_cache.get(cache_key)
+
+    def cache_prompt_response(self, prompt: str, response: str):
+        """Cache prompt response"""
+        cache_key = self.get_cache_key(prompt)
+        self.prompt_cache[cache_key] = response
+        self.save_caches()
+
+    def process_query(self, query: str) -> Dict:
+        # Check query cache first
+        cache_key = self.get_cache_key(query)
+        if cache_key in self.query_cache:
+            return self.query_cache[cache_key]
+
+        try:
+            # Check prompt cache
+            prompt = METRIC_CALCULATION_PROMPT.format(question=query)  # Use the defined prompt template
+            cached_response = self.get_cached_prompt_response(prompt)
+            
+            if cached_response:
+                sql_query = self._extract_sql(cached_response)
+            else:
+                # Only call API if not in prompt cache
                 agent_response = self.sql_agent.invoke({
-                    "input": formatted_query
+                    "input": prompt
                 })
+                self.cache_prompt_response(prompt, str(agent_response))
+                sql_query = self._extract_sql(str(agent_response))
+            
+            if not sql_query:  # Add explicit check for empty SQL
+                return {"success": False, "error": "No valid SQL query was generated"}
                 
-                # Handle both structured and unstructured responses
-                if isinstance(agent_response, dict):
-                    result = agent_response.get("output", str(agent_response))
-                else:
-                    result = str(agent_response)
-                    
-                state["sql_results"] = {
-                    "query": state["user_query"],
-                    "response": result,
-                    "result": result
-                }
-                return state
-            except Exception as e:
-                state["sql_results"] = {
-                    "query": state["user_query"],
-                    "error": str(e),
-                    "result": "Error occurred during query processing"
-                }
-                return state
+            result = self._execute_sql_safely(sql_query)
+            if result["success"]:
+                self.query_cache[cache_key] = result
+                self.save_caches()
+            return result
+            
+        except Exception as e:
+            return {"success": False, "error": f"Query processing error: {str(e)}"}
 
-        def analyze_results(state: AnalysisState) -> AnalysisState:
-            try:
-                # Add explicit format instructions
-                analysis_prompt = (
-                    "Analyze these results in a clear format:\n"
-                    "1. Key findings\n"
-                    "2. Important metrics\n"
-                    "3. Recommendations\n\n"
-                    f"Results to analyze: {state['sql_results']['result']}"
-                )
-                
-                analysis_response = self.sql_agent.invoke({
-                    "input": analysis_prompt
-                })
-                
-                # Handle both structured and unstructured responses
-                if isinstance(analysis_response, dict):
-                    analysis = analysis_response.get("output", str(analysis_response))
-                else:
-                    analysis = str(analysis_response)
-                    
-                state["analysis"] = analysis
-                return state
-            except Exception as e:
-                state["analysis"] = f"Error during analysis: {str(e)}"
-                return state
+    def _extract_sql(self, text: str) -> str:
+        # Improve SQL extraction with multiple pattern matching
+        patterns = [
+            r"```sql\n(.*?)\n```",  # Standard markdown SQL blocks
+            r"```(.*?)```",         # Generic code blocks
+            r"SELECT.*?FROM.*?;",    # Direct SQL statements
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            if match:
+                sql = match.group(1).strip() if pattern.startswith('```') else match.group(0)
+                return sql
+        return ""
 
-        # Set up the workflow graph
-        workflow.add_node("process_query", process_query)
-        workflow.add_node("analyze_results", analyze_results)
-        workflow.set_entry_point("process_query")
-        workflow.add_edge("process_query", "analyze_results")
-        workflow.add_edge("analyze_results", END)
-
-        return workflow
+    def _execute_sql_safely(self, query: str) -> Dict:
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute(query)
+            
+            metrics = {}
+            for row in cursor.fetchall():
+                metrics[str(row[0])] = row[1] if len(row) > 1 else row[0]
+            
+            return {"metrics": metrics, "success": True}
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def analyze(self, query: str) -> Dict:
         if query in self.query_cache:
             return self.query_cache[query]
         
-        start_time = time.time()
-        initial_state = AnalysisState(
-            user_query=query,
-            query_classification={},
-            decomposed_questions=[],
-            sql_results={},
-            analysis="",
-            final_output={},
-            processing_time=0,
-            agent_states={},
-            raw_responses={},
-            messages=[]
-        )
-        
-        try:
-            # Compile the workflow first
-            app = self.workflow.compile()
-            # Then run it with the initial state
-            final_state = app.invoke(initial_state)
-            
-            # Ensure the result is JSON serializable
-            result = {
-                "query": query,
-                "results": str(final_state["sql_results"]),
-                "analysis": str(final_state["analysis"]),
-                "processing_time": time.time() - start_time
-            }
-            self.query_cache[query] = result
-            return result
-            
-        except Exception as e:
-            return {"error": str(e), "query": query}
-
-    def _analyze_results(self, query: str, sql_results: Dict) -> str:
-        # Filter only essential data
-        filtered_results = {
-            k: {
-                'question': v.get('question'),
-                'result': v.get('result')
-            }
-            for k, v in sql_results.items()
-            if 'error' not in v
-        }
-        
-        # Compact JSON representation
-        results_context = json.dumps(filtered_results, separators=(',', ':'))
-        
-        response = self.llm.invoke([
-            SystemMessage(content=ANALYST_PROMPT),
-            HumanMessage(content=f"Q:{query} R:{results_context}")
-        ])
-        
-        return response.content
-
-    def _direct_sql_query(self, query: str) -> Dict:
-        if query in self.query_cache:
-            return self.query_cache[query]
-        
-        try:
-            result = self.sql_agent.invoke({"input": f"SQL query only: {query}"})
-            sql = self._extract_sql(result['output'])
-            
-            if sql:
-                df = pd.read_sql_query(sql, self.conn)
-                results = {
-                    "query_type": "direct_sql",
-                    "sql_query": sql,
-                    "results": df.to_dict('records'),
-                    "processing_time": time.time()
-                }
-                self.query_cache[query] = results
-                return results
-                
-        except Exception as e:
-            return {"error": str(e), "query": query}
-
-    def _extract_thought(self, text: str) -> str:
-        if "Thought:" in text:
-            return text.split("Thought:")[1].split("SQL")[0].strip()
-        return ""
-
-    def _extract_sql(self, text: str) -> str:
-        if "SQL:" in text:
-            sql_part = text.split("SQL:")[1]
-            if "SQLResult:" in sql_part:
-                return sql_part.split("SQLResult:")[0].strip()
-            if "Final Answer:" in sql_part:
-                return sql_part.split("Final Answer:")[0].strip()
-            return sql_part.strip()
-        return ""
+        state = AnalysisState(user_query=query)
+        result = self.process_query(state)
+        self.query_cache[query] = result
+        return result
 
 def format_output(results: Dict) -> str:
     output = []
@@ -317,78 +293,30 @@ def main():
     st.sidebar.title("Configuration")
     api_key = st.sidebar.text_input("Enter your Anthropic API Key:", type="password")
     
+    config = Config(api_key=api_key)
+    
     if not api_key:
         st.warning("Please enter your Anthropic API key in the sidebar to proceed.")
         return
         
     st.write("""
     Welcome to the Database Analysis Assistant! 
-    This tool helps analyze data using natural language queries.
     Ask any question about your data, and I'll help you analyze it.
     """)
-    
-    config = Config()
-    config.api_key = api_key
     
     query = st.text_area("Enter your analysis question:", height=100)
     
     if st.button("Analyze"):
         if query:
             with st.spinner("Analyzing your query..."):
-                try:
-                    analyst = DatabaseAnalyst(config)
-                    results = analyst.analyze(query)
-                    
-                    # Display results
-                    if "error" in results:
-                        st.error(results["error"])
-                    else:
-                        # Display formatted output
-                        st.write("### Analysis Results")
-                        st.write(format_output(results))
-                        
-                        # Display JSON results in an expandable section
-                        with st.expander("View Raw JSON Results"):
-                            # Create tabs for different views
-                            json_tab, pretty_tab = st.tabs(["JSON", "Pretty View"])
-                            
-                            with json_tab:
-                                st.code(json.dumps(results, indent=2), language='json')
-                            
-                            with pretty_tab:
-                                st.json(results)
-                        
-                        # Add download button for detailed results
-                        filename = f"{query[:50].replace(' ', '_').lower()}_analysis.json"
-                        if isinstance(results, dict):
-                            st.download_button(
-                                label="Download Detailed Results",
-                                data=json.dumps(results, indent=2),
-                                file_name=filename,
-                                mime="application/json"
-                            )
-                except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
-        else:
-            st.warning("Please enter a query first.")
-    
-    # Add sidebar with information
-    st.sidebar.title("About")
-    st.sidebar.info("""
-    This tool uses advanced AI to analyze data from a database.
-    You can ask questions about:
-    - Data trends
-    - Summary statistics
-    - Data comparisons
-    """)
-    
-    # Add example queries
-    st.sidebar.title("Example Queries")
-    st.sidebar.markdown("""
-    - What are the average values for each category?
-    - How do the results compare across different groups?
-    - What are the key metrics for the last analysis?
-    """)
+                analyst = DatabaseAnalyst(config)
+                result = analyst.process_query(query)
+                
+                if result["success"]:
+                    st.write("### Results:")
+                    st.write(result["metrics"])
+                else:
+                    st.error(f"Error: {result.get('error', 'Unknown error')}")
 
 if __name__ == "__main__":
     main()
