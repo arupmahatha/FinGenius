@@ -1,15 +1,7 @@
-# requirements.txt
-
-# General libraries
+# General libraries (Remove built-in Python modules)
 pandas
-json
-re
-time
 
-# Database libraries
-sqlite3
-
-# Langchain libraries
+# LangChain libraries
 langchain-anthropic
 langchain
 langchain-community
