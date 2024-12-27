@@ -70,7 +70,7 @@ class Config:
         return api_key
 
 # Part 3: Prompt Templates
-QUERY_CLASSIFIER_PROMPT = """You are a query classifier that determines if a stock market question:
+QUERY_CLASSIFIER_PROMPT = """You are a query classifier that determines if a database query:
 1. Can be answered with a direct SQL query
 2. Needs complex analysis
 
@@ -86,8 +86,8 @@ Respond in JSON format:
     }
 }"""
 
-SQL_AGENT_PROMPT = """You are an expert financial database analyst. Your task is to:
-1. Analyze stock market queries
+SQL_AGENT_PROMPT = """You are an expert database analyst. Your task is to:
+1. Analyze database queries
 2. Create appropriate SQL queries using the provided database schema
 3. Provide clear results
 
@@ -103,7 +103,7 @@ Your responses should include:
 4. SQL query (if possible)
 5. Result interpretation"""
 
-ANALYST_PROMPT = """You are an expert financial analyst. Analyze the provided SQL results and provide insights.
+ANALYST_PROMPT = """You are an expert analyst. Analyze the provided SQL results and provide insights.
 
 If you encounter:
 - Unclear patterns
@@ -115,13 +115,6 @@ Clearly state:
 1. What additional information would help
 2. Why it's needed
 3. How it would improve the analysis
-
-Focus on:
-1. Price trends and patterns
-2. Volume analysis
-3. Technical indicators
-4. Risk assessment
-5. Notable patterns
 
 Be specific and data-driven in your analysis."""
 
@@ -622,15 +615,15 @@ def analyze_stock_query(query: str) -> str:
 
 # Streamlit UI
 def main():
-    st.title("Stock Market Analysis Assistant")
+    st.title("Database Analysis Assistant")
     
     st.write("""
-    Welcome to the Stock Market Analysis Assistant! 
-    This tool helps analyze stock market data using natural language queries.
+    Welcome to the Database Analysis Assistant! 
+    This tool helps analyze data using natural language queries.
     """)
     
     # Query input
-    query = st.text_area("Enter your stock market analysis question:", height=100)
+    query = st.text_area("Enter your analysis question:", height=100)
     
     if st.button("Analyze"):
         if query:
@@ -675,21 +668,19 @@ def main():
     # Add sidebar with information
     st.sidebar.title("About")
     st.sidebar.info("""
-    This tool uses advanced AI to analyze stock market data.
+    This tool uses advanced AI to analyze data from a database.
     You can ask questions about:
-    - Price trends
-    - Volume analysis
-    - Technical indicators
-    - Risk assessment
-    - Market patterns
+    - Data trends
+    - Summary statistics
+    - Data comparisons
     """)
     
     # Add example queries
     st.sidebar.title("Example Queries")
     st.sidebar.markdown("""
-    - How does the EBITDA margin trend compare between properties?
-    - What are the key performance metrics for last quarter?
-    - Compare revenue growth across different properties
+    - What are the average values for each category?
+    - How do the results compare across different groups?
+    - What are the key metrics for the last analysis?
     """)
 
 if __name__ == "__main__":
