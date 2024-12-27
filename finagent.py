@@ -1,5 +1,3 @@
-# Part 1: Imports and Basic Setup
-# Import required libraries for data processing, database operations, language models, and environment variables
 import os
 from typing import Dict, List, Optional, TypedDict, Literal, Union, Annotated
 from dataclasses import dataclass
@@ -12,16 +10,12 @@ from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
 from langchain_core.messages import SystemMessage, HumanMessage, AnyMessage
 from langgraph.graph import StateGraph, START, END
-from dotenv import load_dotenv
 import time
 from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 import sqlite3
 import re
 from langchain.memory import ConversationBufferMemory
 import streamlit as st
-
-# Load API keys from environment file
-load_dotenv('api_key.env')
 
 # Initialize memory for state management
 memory = {}  # Using a simple dictionary for in-memory storage
@@ -61,13 +55,7 @@ class Config:
     sqlite_path: str = "sqlite:///final_working_database.db"
     model_name: str = "claude-3-sonnet-20240229"
     confidence_threshold: float = 0.85  # High confidence threshold for autonomous decisions
-    
-    @property
-    def api_key(self) -> str:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ConfigError("ANTHROPIC_API_KEY not found in api_key.env file")
-        return api_key
+    api_key: str = ""  # Initialize empty API key
 
 # Part 3: Prompt Templates
 QUERY_CLASSIFIER_PROMPT = """You are a query classifier that determines if a database query:
@@ -617,10 +605,22 @@ def analyze_stock_query(query: str) -> str:
 def main():
     st.title("Database Analysis Assistant")
     
+    # Add API key input in sidebar
+    st.sidebar.title("Configuration")
+    api_key = st.sidebar.text_input("Enter your Anthropic API Key:", type="password")
+    
+    if not api_key:
+        st.warning("Please enter your Anthropic API key in the sidebar to proceed.")
+        return
+        
     st.write("""
     Welcome to the Database Analysis Assistant! 
     This tool helps analyze data using natural language queries.
     """)
+    
+    # Initialize config with API key
+    config = Config()
+    config.api_key = api_key
     
     # Query input
     query = st.text_area("Enter your analysis question:", height=100)
@@ -629,7 +629,12 @@ def main():
         if query:
             with st.spinner("Analyzing your query..."):
                 try:
-                    result = analyze_stock_query(query)
+                    # Create analyzer instance with the config containing API key
+                    analyzer = StockAnalyzer(config)
+                    results = analyzer.analyze(query)
+                    
+                    # Convert results to formatted output
+                    result = format_output(results)
                     
                     # Display results in sections
                     st.subheader("Analysis Results")

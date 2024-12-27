@@ -1,0 +1,27 @@
+# requirements.txt
+
+# General libraries
+os
+pandas
+json
+re
+time
+
+# Database libraries
+sqlite3
+
+# Langchain libraries
+langchain-anthropic
+langchain
+langchain-community
+langchain-core
+langgraph
+
+# Environment variable management
+python-dotenv
+
+# Streamlit for UI
+streamlit
+
+# Anthropic API
+anthropic
