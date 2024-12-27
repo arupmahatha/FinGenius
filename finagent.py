@@ -65,13 +65,17 @@ class Config:
     cache_ttl: int = 86400  # Cache TTL in seconds (24 hours)
 
 # Part 3: Prompt Templates
-SYSTEM_SQL_PROMPT = """Return only SQL query between ```sql tags that calculates metrics. Format:
+SYSTEM_SQL_PROMPT = """You MUST return ONLY a SQL query between ```sql tags. Nothing else.
+The query should follow this format:
+
 WITH metrics AS (
     SELECT 'Metric Name' as metric_name, calculated_value as value
     FROM relevant_tables
     -- Use appropriate joins if needed
 )
-SELECT metric_name, value FROM metrics;"""
+SELECT metric_name, value FROM metrics;
+
+Do not provide any explanations or analysis - just the SQL query."""
 
 METRIC_CALCULATION_PROMPT = """Write a SQL query that calculates specific metrics for this question. 
 Use CTEs and subqueries for complex calculations. 
@@ -172,29 +176,39 @@ class DatabaseAnalyst:
         self.save_caches()
 
     def process_query(self, query: str) -> Dict:
-        # Check query cache first
         cache_key = self.get_cache_key(query)
         if cache_key in self.query_cache:
             return self.query_cache[cache_key]
 
         try:
-            # Check prompt cache
-            prompt = METRIC_CALCULATION_PROMPT.format(question=query)  # Use the defined prompt template
+            prompt = METRIC_CALCULATION_PROMPT.format(question=query)
             cached_response = self.get_cached_prompt_response(prompt)
             
-            if cached_response:
-                sql_query = self._extract_sql(cached_response)
-            else:
-                # Only call API if not in prompt cache
+            try:
                 agent_response = self.sql_agent.invoke({
                     "input": prompt
-                })
-                self.cache_prompt_response(prompt, str(agent_response))
-                sql_query = self._extract_sql(str(agent_response))
-            
-            if not sql_query:  # Add explicit check for empty SQL
+                }, config={"handle_parsing_errors": False})
+                response_text = str(agent_response)
+            except Exception as e:
+                error_text = str(e)
+                # If this contains an analysis, capture it as a successful response
+                if "Could not parse LLM output: `" in error_text:
+                    analysis = error_text.split("Could not parse LLM output: `")[1].rsplit("`", 1)[0]
+                    result = {
+                        "success": True,
+                        "metrics": {"analysis": analysis},
+                        "type": "analysis"
+                    }
+                    self.query_cache[cache_key] = result
+                    self.save_caches()
+                    return result
+                return {"success": False, "error": str(e)}
+
+            # Continue with normal SQL processing if no exception
+            sql_query = self._extract_sql(response_text)
+            if not sql_query:
                 return {"success": False, "error": "No valid SQL query was generated"}
-                
+            
             result = self._execute_sql_safely(sql_query)
             if result["success"]:
                 self.query_cache[cache_key] = result
@@ -205,18 +219,21 @@ class DatabaseAnalyst:
             return {"success": False, "error": f"Query processing error: {str(e)}"}
 
     def _extract_sql(self, text: str) -> str:
-        # Improve SQL extraction with multiple pattern matching
         patterns = [
-            r"```sql\n(.*?)\n```",  # Standard markdown SQL blocks
-            r"```(.*?)```",         # Generic code blocks
-            r"SELECT.*?FROM.*?;",    # Direct SQL statements
+            r"```sql\n(.*?)\n```",     # Standard markdown SQL blocks
+            r"```(.*?)```",            # Generic code blocks
+            r"SELECT[\s\S]*?;",        # Direct SQL statements (multiline)
+            r"WITH[\s\S]*?;",          # CTE-style queries (multiline)
+            r"(?:SELECT|WITH).*?;"     # Any SQL starting with SELECT or WITH
         ]
         
         for pattern in patterns:
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
             if match:
                 sql = match.group(1).strip() if pattern.startswith('```') else match.group(0)
-                return sql
+                # Basic validation that it's actually SQL
+                if any(keyword in sql.upper() for keyword in ['SELECT', 'FROM']):
+                    return sql
         return ""
 
     def _execute_sql_safely(self, query: str) -> Dict:
@@ -279,7 +296,23 @@ def analyze_query(query: str) -> str:
         
         if results and "error" not in results:
             formatted_output = format_output(results)
-            filename = f"{query[:50].replace(' ', '_').lower()}_analysis.json"
+            
+            # Save the analysis to a JSON file
+            output_data = {
+                "query": query,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "analysis": formatted_output
+            }
+            
+            # Create a safe filename from the query
+            filename = f"{hashlib.md5(query.encode()).hexdigest()[:10]}_analysis.json"
+            
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(output_data, f, indent=2, ensure_ascii=False)
+            except Exception as save_error:
+                return f"{formatted_output}\n\nWarning: Could not save results to file: {str(save_error)}"
+                
             return formatted_output + f"\n\nDetailed results saved to {filename}"
         else:
             return f"Error: {results.get('error', 'Unknown error occurred')}"
