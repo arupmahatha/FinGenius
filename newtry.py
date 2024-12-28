@@ -358,31 +358,37 @@ class ChatManager:
         os.makedirs(self.chats_dir, exist_ok=True)
         
     def save_chat(self, chat_id: str, messages: list):
-        # Get chat title from first user message or use timestamp
-        title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        # Get chat title from first user message
+        title = None
+        first_query = None
         for message in messages:
             if message["role"] == "user":
+                first_query = message["content"]
                 # Clean and truncate the title
-                clean_title = message["content"].replace("\n", " ").strip()
-                title = f"Query: {clean_title[:40]}..." if len(clean_title) > 40 else f"Query: {clean_title}"
+                clean_title = first_query.replace("\n", " ").strip()
+                title = clean_title[:50] + "..." if len(clean_title) > 50 else clean_title
                 break
-                
+        
+        if not title:
+            title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        
         chat_data = {
             "id": chat_id,
             "title": title,
+            "first_query": first_query,
             "messages": messages,
             "timestamp": datetime.now().isoformat()
         }
         
         filename = os.path.join(self.chats_dir, f"{chat_id}.json")
-        with open(filename, 'w') as f:
-            json.dump(chat_data, f)
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, ensure_ascii=False, indent=2)
             
     def load_chats(self) -> dict:
         chats = {}
         for filename in os.listdir(self.chats_dir):
             if filename.endswith('.json'):
-                with open(os.path.join(self.chats_dir, filename)) as f:
+                with open(os.path.join(self.chats_dir, filename), encoding='utf-8') as f:
                     chat_data = json.load(f)
                     chats[chat_data['id']] = chat_data
         return dict(sorted(chats.items(), key=lambda x: x[1]['timestamp'], reverse=True))
@@ -428,7 +434,7 @@ def main():
         
         st.title("Conversation Management")
         
-        # Improved new chat button handling
+        # New chat button with improved handling
         if st.button("Start New Analysis", type="primary", key="new_chat_button", disabled=not st.session_state.api_key_set):
             if not st.session_state.new_chat_clicked:
                 st.session_state.new_chat_clicked = True
@@ -463,6 +469,24 @@ Please ask me any question about your database!"""
                 }
                 st.session_state.messages.append(welcome_message)
                 st.rerun()
+        
+        # Display chat history
+        st.title("Chat History")
+        chats = chat_manager.load_chats()
+        for chat_id, chat_data in chats.items():
+            with st.expander(f"📝 {chat_data['title']}", expanded=False):
+                st.write(f"Created: {datetime.fromisoformat(chat_data['timestamp']).strftime('%Y-%m-%d %H:%M')}")
+                if st.button("Load Chat", key=f"load_{chat_id}"):
+                    # Save current chat before loading
+                    if st.session_state.messages:
+                        chat_manager.save_chat(
+                            st.session_state.current_chat_id,
+                            st.session_state.messages
+                        )
+                    # Load selected chat
+                    st.session_state.messages = chat_data['messages']
+                    st.session_state.current_chat_id = chat_id
+                    st.rerun()
 
     # Reset new_chat_clicked flag
     if st.session_state.new_chat_clicked:
@@ -481,40 +505,32 @@ Please ask me any question about your database!"""
         st.error(f"Failed to initialize database analyst: {str(e)}")
         return
 
-    # Chat interface with improved message handling
+    # Chat interface with improved message display
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
-            if message["role"] == "assistant":
-                if st.button("🔄 Retry", key=f"retry_{idx}", help="Retry this analysis"):
-                    user_query = next(
-                        (msg["content"] for msg in st.session_state.messages[:idx] 
-                         if msg["role"] == "user"),
-                        None
-                    )
-                    if user_query:
-                        with st.spinner("🔄 Reanalyzing..."):
-                            result = analyst.process_query(user_query)
-                            if result["success"]:
-                                new_response = "🎯 Updated results:\n\n"
-                                for metric, value in result['metrics'].items():
-                                    new_response += f"**{metric}**: {value}\n"
-                                st.session_state.messages[idx]["content"] = new_response
-                                chat_manager.save_chat(
-                                    st.session_state.current_chat_id,
-                                    st.session_state.messages
-                                )
-                                st.rerun()
+            # Add context for follow-up questions
+            if message["role"] == "user":
+                st.caption("Question")
+            elif message["role"] == "assistant":
+                st.caption("Response")
+                if idx > 0 and st.session_state.messages[idx-1]["role"] == "user":
+                    st.caption("Follow-up available ↓")
 
-    # Chat input with improved error handling
+    # Chat input with automatic saving
     if prompt := st.chat_input("Ask me about your database...", key="chat_input"):
-        st.session_state.last_query = prompt
+        # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         
         with st.chat_message("assistant"):
             with st.spinner("Analyzing..."):
                 try:
+                    # Process query with context
+                    context = None
+                    if len(st.session_state.messages) > 2:  # If there's previous conversation
+                        context = st.session_state.messages[-3]["content"] if len(st.session_state.messages) >= 3 else None
+                    
                     result = analyst.process_query(prompt)
                     
                     if result["success"]:
@@ -526,10 +542,13 @@ Please ask me any question about your database!"""
                     
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
+                    
+                    # Save chat after each interaction
                     chat_manager.save_chat(
                         st.session_state.current_chat_id,
                         st.session_state.messages
                     )
+                    
                 except Exception as e:
                     st.error(f"An error occurred: {str(e)}")
 
