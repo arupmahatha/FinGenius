@@ -1,0 +1,12 @@
+{
+  "id": "7f2969c0-28bb-45ca-b338-d7ab71a855e4",
+  "title": "Chat 2024-12-28 23:34",
+  "first_query": null,
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "👋 Hello! I'm your SQL Database Analysis Assistant. \n\nI can help you analyze your database by:\n- Running SQL queries\n- Providing data insights\n- Answering follow-up questions about the results\n\nPlease ask me any question about your database!"
+    }
+  ],
+  "timestamp": "2024-12-28T23:34:31.397761"
+}
