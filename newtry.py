@@ -394,9 +394,12 @@ class ChatManager:
         return dict(sorted(chats.items(), key=lambda x: x[1]['timestamp'], reverse=True))
         
     def delete_chat(self, chat_id: str):
+        """Delete a saved chat by its ID"""
         filename = os.path.join(self.chats_dir, f"{chat_id}.json")
         if os.path.exists(filename):
             os.remove(filename)
+            return True
+        return False
 
 # Streamlit UI
 def main():
@@ -470,23 +473,41 @@ Please ask me any question about your database!"""
                 st.session_state.messages.append(welcome_message)
                 st.rerun()
         
-        # Display chat history
+        # Display chat history with delete option
         st.title("Chat History")
         chats = chat_manager.load_chats()
+        
         for chat_id, chat_data in chats.items():
             with st.expander(f"📝 {chat_data['title']}", expanded=False):
                 st.write(f"Created: {datetime.fromisoformat(chat_data['timestamp']).strftime('%Y-%m-%d %H:%M')}")
-                if st.button("Load Chat", key=f"load_{chat_id}"):
-                    # Save current chat before loading
-                    if st.session_state.messages:
-                        chat_manager.save_chat(
-                            st.session_state.current_chat_id,
-                            st.session_state.messages
-                        )
-                    # Load selected chat
-                    st.session_state.messages = chat_data['messages']
-                    st.session_state.current_chat_id = chat_id
-                    st.rerun()
+                
+                # Create two columns for the buttons
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("Load Chat", key=f"load_{chat_id}"):
+                        # Save current chat before loading
+                        if st.session_state.messages:
+                            chat_manager.save_chat(
+                                st.session_state.current_chat_id,
+                                st.session_state.messages
+                            )
+                        # Load selected chat
+                        st.session_state.messages = chat_data['messages']
+                        st.session_state.current_chat_id = chat_id
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🗑️ Delete", key=f"delete_{chat_id}", type="secondary"):
+                        # Delete the chat
+                        chat_manager.delete_chat(chat_id)
+                        # If the deleted chat was the current one, start a new chat
+                        if chat_id == st.session_state.current_chat_id:
+                            st.session_state.current_chat_id = str(uuid.uuid4())
+                            st.session_state.messages = []
+                        # Refresh the chat list
+                        st.session_state.chats = chat_manager.load_chats()
+                        st.rerun()
 
     # Reset new_chat_clicked flag
     if st.session_state.new_chat_clicked:
