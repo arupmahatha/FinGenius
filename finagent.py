@@ -323,6 +323,10 @@ def analyze_query(query: str) -> str:
 def main():
     st.title("Database Analysis Assistant")
     
+    # Initialize session state for results if it doesn't exist
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = {}
+    
     st.sidebar.title("Configuration")
     api_key = st.sidebar.text_input("Enter your Anthropic API Key:", type="password")
     
@@ -334,45 +338,66 @@ def main():
         
     st.write("""
     Welcome to the Database Analysis Assistant! 
-    Ask any questions about your data, and I'll help you analyze it.
-    You can enter multiple questions, one per line.
+    Select the number of questions you'd like to ask and enter them in the boxes below.
     """)
     
-    queries = st.text_area("Enter your analysis questions (one per line):", height=150)
+    # Number selector for questions
+    num_questions = st.number_input("How many questions would you like to ask?", 
+                                  min_value=1, 
+                                  max_value=10, 
+                                  value=1)
+    
+    # Create list to store queries
+    queries = []
+    
+    # Create text input boxes based on number selected
+    for i in range(int(num_questions)):
+        query = st.text_input(f"Question {i+1}:", key=f"query_{i}")
+        if query:  # Only add non-empty queries
+            queries.append(query)
     
     if st.button("Analyze"):
         if queries:
-            query_list = [q.strip() for q in queries.split('\n') if q.strip()]
+            # Clear previous results when running new analysis
+            st.session_state.analysis_results = {}
             
-            for query in query_list:
-                with st.spinner(f"Analyzing: {query}"):
-                    analyst = DatabaseAnalyst(config)
-                    result = analyst.process_query(query)
-                    
-                    # Create result dictionary
-                    analysis_result = {
-                        "query": query,
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "results": result
-                    }
-                    
-                    # Display individual result with its own download button
-                    st.write(f"### Analysis for: {query}")
-                    if result["success"]:
-                        st.write(result["metrics"])
-                        
-                        # Create individual download button for this result
-                        json_str = json.dumps(analysis_result, indent=2)
-                        safe_filename = f"analysis_{hashlib.md5(query.encode()).hexdigest()[:8]}.json"
-                        st.download_button(
-                            label=f"Download Results for: {query[:30]}...",
-                            data=json_str,
-                            file_name=safe_filename,
-                            mime="application/json",
-                            key=safe_filename  # Unique key for each button
-                        )
-                    else:
-                        st.error(f"Error: {result.get('error', 'Unknown error')}")
+            for query in queries:
+                if query.strip():  # Process only non-empty queries
+                    with st.spinner(f"Processing: {query}"):
+                        analyst = DatabaseAnalyst(config)
+                        result = analyst.process_query(query)
+                        # Store result in session state
+                        st.session_state.analysis_results[query] = result
+
+    # Display results from session state
+    for query, result in st.session_state.analysis_results.items():
+        st.write(f"### Results for: {query}")
+        if result["success"]:
+            # Show Results
+            st.write("#### Results:")
+            st.write(result["metrics"])
+            
+            # Create unique key for download button
+            download_key = f"download_{hashlib.md5(query.encode()).hexdigest()}"
+            
+            # Prepare download data
+            json_str = json.dumps({
+                "query": query,
+                "results": result["metrics"],
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }, indent=2)
+            safe_filename = f"analysis_{hashlib.md5(query.encode()).hexdigest()[:8]}.json"
+            
+            # Download button with unique key
+            st.download_button(
+                label=f"Download Results for: {query[:30]}...",
+                data=json_str,
+                file_name=safe_filename,
+                mime="application/json",
+                key=download_key
+            )
+        else:
+            st.error(f"Error: {result.get('error', 'Unknown error')}")
 
 if __name__ == "__main__":
     main()
