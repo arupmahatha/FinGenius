@@ -12,15 +12,10 @@ numpy
 
 # Database
 sqlalchemy
-# Note: sqlite3 is a built-in library with Python and does not need to be added here.
 
 # Typing and utilities
 typing-extensions
 python-dotenv
 
-# Caching and serialization
-pickle5  # Only for Python < 3.8
-# Note: hashlib and functools are built-in libraries with Python and do not need to be added here.
-
 # Optional but recommended
-tqdm  # For progress bars
+tqdm
