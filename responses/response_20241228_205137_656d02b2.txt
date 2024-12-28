@@ -1,0 +1,4 @@
+Query: Show RevPAR trends for AC Wailea and Surfrider Malibu
+Timestamp: 20241228_205137
+
+Response:

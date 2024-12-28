@@ -1,6 +1,6 @@
 import os
 from typing import Dict, List, Optional, TypedDict, Literal, Union, Annotated
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import pandas as pd
 import json
@@ -101,6 +101,13 @@ Provide:
 2. Connections between different questions
 3. Key insights from the combined analysis"""
 
+# Add new state management for chat
+@dataclass
+class ChatState:
+    conversation_history: List[Dict[str, str]] = field(default_factory=list)
+    current_context: Dict = field(default_factory=dict)
+    last_analysis: Optional[Dict] = None
+
 # Part 4: Main DatabaseAnalyst Class
 class DatabaseAnalyst:
     def __init__(self, config: Config):
@@ -138,6 +145,13 @@ class DatabaseAnalyst:
         self.cache_file = ".query_cache.pkl"
         self.prompt_cache_file = ".prompt_cache.pkl"
         self.load_caches()
+        
+        # Add conversation memory
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+        self.chat_state = ChatState()
 
     def load_caches(self):
         """Load both caches from files"""
@@ -180,18 +194,39 @@ class DatabaseAnalyst:
         if cache_key in self.query_cache:
             return self.query_cache[cache_key]
 
-        try:
-            prompt = METRIC_CALCULATION_PROMPT.format(question=query)
-            cached_response = self.get_cached_prompt_response(prompt)
-            
+        retries = 0
+        max_retries = 2
+        last_error = None
+
+        while retries <= max_retries:
             try:
+                prompt = METRIC_CALCULATION_PROMPT.format(question=query)
+                if retries > 0:
+                    # Add error context for retry
+                    prompt += f"\nPrevious attempt failed with error: {last_error}\nPlease correct the SQL query and try again."
+                
                 agent_response = self.sql_agent.invoke({
                     "input": prompt
                 }, config={"handle_parsing_errors": False})
                 response_text = str(agent_response)
+                
+                sql_query = self._extract_sql(response_text)
+                if not sql_query:
+                    return {"success": False, "error": "No valid SQL query was generated"}
+                
+                result = self._execute_sql_safely(sql_query)
+                if result["success"]:
+                    self.query_cache[cache_key] = result
+                    self.save_caches()
+                    return result
+                else:
+                    last_error = result["error"]
+                    retries += 1
+                    continue
+                    
             except Exception as e:
                 error_text = str(e)
-                # If this contains an analysis, capture it as a successful response
+                # Still handle analysis responses as before
                 if "Could not parse LLM output: `" in error_text:
                     analysis = error_text.split("Could not parse LLM output: `")[1].rsplit("`", 1)[0]
                     result = {
@@ -202,21 +237,16 @@ class DatabaseAnalyst:
                     self.query_cache[cache_key] = result
                     self.save_caches()
                     return result
-                return {"success": False, "error": str(e)}
+                
+                last_error = str(e)
+                retries += 1
+                continue
 
-            # Continue with normal SQL processing if no exception
-            sql_query = self._extract_sql(response_text)
-            if not sql_query:
-                return {"success": False, "error": "No valid SQL query was generated"}
-            
-            result = self._execute_sql_safely(sql_query)
-            if result["success"]:
-                self.query_cache[cache_key] = result
-                self.save_caches()
-            return result
-            
-        except Exception as e:
-            return {"success": False, "error": f"Query processing error: {str(e)}"}
+        # If we've exhausted retries, return the last error
+        return {
+            "success": False, 
+            "error": f"Failed after {max_retries} attempts. Last error: {last_error}"
+        }
 
     def _extract_sql(self, text: str) -> str:
         patterns = [
@@ -236,7 +266,7 @@ class DatabaseAnalyst:
                     return sql
         return ""
 
-    def _execute_sql_safely(self, query: str) -> Dict:
+    def _execute_sql_safely(self, query: str, max_retries: int = 2) -> Dict:
         try:
             cursor = self.db_connection.cursor()
             cursor.execute(query)
@@ -248,7 +278,7 @@ class DatabaseAnalyst:
             return {"metrics": metrics, "success": True}
             
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e), "query": query}
 
     def analyze(self, query: str) -> Dict:
         if query in self.query_cache:
@@ -258,6 +288,98 @@ class DatabaseAnalyst:
         result = self.process_query(state)
         self.query_cache[query] = result
         return result
+
+    def retry_with_different_approach(self, query: str, attempt: int = 1) -> Dict:
+        """Retry query with different approaches based on attempt number"""
+        
+        # Different prompts for different retry attempts
+        retry_prompts = {
+            1: """Let's try this again. Please write a simple SQL query to answer this question. 
+            Focus on the core metrics needed and use basic SQL operations:
+            {query}""",
+            
+            2: """Break this down step by step:
+            1. First, identify the main tables needed
+            2. Then, write a basic SQL query using only essential joins
+            3. Focus on calculating exactly what was asked
+            Question: {query}""",
+            
+            3: """One final attempt. Write the simplest possible SQL query that could answer this:
+            1. Use only basic SELECT, FROM, WHERE, GROUP BY
+            2. Avoid complex subqueries if possible
+            3. Focus on direct answers
+            Question: {query}"""
+        }
+        
+        try:
+            # Get the appropriate prompt for this attempt
+            prompt = retry_prompts.get(attempt, retry_prompts[1]).format(query=query)
+            
+            # Add attempt context to the state
+            agent_response = self.sql_agent.invoke({
+                "input": prompt,
+                "attempt": attempt
+            })
+            
+            response_text = str(agent_response)
+            sql_query = self._extract_sql(response_text)
+            
+            if sql_query:
+                result = self._execute_sql_safely(sql_query)
+                if result["success"]:
+                    return result
+                
+            return {
+                "success": False,
+                "error": f"Attempt {attempt}: Could not generate valid SQL",
+                "attempt": attempt
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Attempt {attempt}: {str(e)}",
+                "attempt": attempt
+            }
+
+    def process_chat_query(self, user_message: str) -> Dict:
+        """Process a chat message with context and retry logic"""
+        cache_key = self.get_cache_key(user_message)
+        
+        # Check if this is a follow-up question
+        if self.chat_state.last_analysis:
+            context = f"""Previous analysis context:
+            {json.dumps(self.chat_state.last_analysis, indent=2)}
+            
+            Follow-up question: {user_message}"""
+        else:
+            context = user_message
+
+        # Try up to 3 times with different approaches
+        for attempt in range(1, 4):
+            try:
+                result = self.retry_with_different_approach(context, attempt)
+                if result["success"]:
+                    self.chat_state.conversation_history.append({
+                        "user": user_message,
+                        "assistant": result
+                    })
+                    self.chat_state.last_analysis = result
+                    return result
+                
+            except Exception as e:
+                continue
+        
+        # If all attempts fail, return the last error
+        return {
+            "success": False,
+            "error": "Failed to generate valid SQL after multiple attempts. Please try rephrasing your question.",
+            "suggestions": [
+                "Be more specific about what you want to calculate",
+                "Specify which tables or metrics you're interested in",
+                "Break down complex questions into simpler parts"
+            ]
+        }
 
 def format_output(results: Dict) -> str:
     output = []
@@ -302,8 +424,7 @@ def analyze_query(query: str) -> str:
                 "query": query,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "analysis": formatted_output
-            }
-            
+            }            
             # Create a safe filename from the query
             filename = f"{hashlib.md5(query.encode()).hexdigest()[:10]}_analysis.json"
             
@@ -319,85 +440,199 @@ def analyze_query(query: str) -> str:
     except Exception as e:
         return f"Error during analysis: {str(e)}"
 
+@dataclass
+class Chat:
+    id: str
+    name: str
+    messages: List[Dict[str, any]] = field(default_factory=list)
+    created_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%d %H:%M:%S"))
+
 # Streamlit UI
 def main():
-    st.title("Database Analysis Assistant")
+    st.title("Database Analysis Chatbot")
     
-    # Initialize session state for results if it doesn't exist
-    if 'analysis_results' not in st.session_state:
-        st.session_state.analysis_results = {}
-    
+    # Initialize session state
+    if 'chats' not in st.session_state:
+        st.session_state.chats = [Chat(id="default", name="New Chat")]
+    if 'current_chat_id' not in st.session_state:
+        st.session_state.current_chat_id = "default"
+    if 'analyst' not in st.session_state:
+        st.session_state.analyst = None
+
+    # Sidebar configuration
     st.sidebar.title("Configuration")
     api_key = st.sidebar.text_input("Enter your Anthropic API Key:", type="password")
     
-    config = Config(api_key=api_key)
+    # Chat management in sidebar
+    st.sidebar.title("Chats")
     
+    # Always show New Chat button
+    if st.sidebar.button("New Chat", key="new_chat_btn"):
+        new_chat_id = f"chat_{int(time.time())}"  # Use timestamp for unique IDs
+        new_chat = Chat(id=new_chat_id, name="New Chat")
+        st.session_state.chats.append(new_chat)
+        st.session_state.current_chat_id = new_chat_id
+        st.rerun()
+
+    # Chat selector with direct ID mapping
+    chat_options = {chat.id: chat.name for chat in st.session_state.chats}
+    selected_chat_id = st.sidebar.selectbox(
+        "Select Chat",
+        options=list(chat_options.keys()),
+        format_func=lambda x: chat_options[x],
+        key="chat_selector",
+        index=list(chat_options.keys()).index(st.session_state.current_chat_id)
+    )
+
+    # Update current chat immediately if changed
+    if selected_chat_id != st.session_state.current_chat_id:
+        st.session_state.current_chat_id = selected_chat_id
+        st.rerun()
+
+    # Get current chat
+    current_chat = next(
+        chat for chat in st.session_state.chats 
+        if chat.id == st.session_state.current_chat_id
+    )
+
     if not api_key:
         st.warning("Please enter your Anthropic API key in the sidebar to proceed.")
         return
-        
-    st.write("""
-    Welcome to the Database Analysis Assistant! 
-    Select the number of questions you'd like to ask and enter them in the boxes below.
-    """)
-    
-    # Number selector for questions
-    num_questions = st.number_input("How many questions would you like to ask?", 
-                                  min_value=1, 
-                                  max_value=10, 
-                                  value=1)
-    
-    # Create list to store queries
-    queries = []
-    
-    # Create text input boxes based on number selected
-    for i in range(int(num_questions)):
-        query = st.text_input(f"Question {i+1}:", key=f"query_{i}")
-        if query:  # Only add non-empty queries
-            queries.append(query)
-    
-    if st.button("Analyze"):
-        if queries:
-            # Clear previous results when running new analysis
-            st.session_state.analysis_results = {}
-            
-            for query in queries:
-                if query.strip():  # Process only non-empty queries
-                    with st.spinner(f"Processing: {query}"):
-                        analyst = DatabaseAnalyst(config)
-                        result = analyst.process_query(query)
-                        # Store result in session state
-                        st.session_state.analysis_results[query] = result
 
-    # Display results from session state
-    for query, result in st.session_state.analysis_results.items():
-        st.write(f"### Results for: {query}")
-        if result["success"]:
-            # Show Results
-            st.write("#### Results:")
-            st.write(result["metrics"])
-            
-            # Create unique key for download button
-            download_key = f"download_{hashlib.md5(query.encode()).hexdigest()}"
-            
-            # Prepare download data
-            json_str = json.dumps({
-                "query": query,
-                "results": result["metrics"],
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }, indent=2)
-            safe_filename = f"analysis_{hashlib.md5(query.encode()).hexdigest()[:8]}.json"
-            
-            # Download button with unique key
-            st.download_button(
-                label=f"Download Results for: {query[:30]}...",
-                data=json_str,
-                file_name=safe_filename,
-                mime="application/json",
-                key=download_key
-            )
-        else:
-            st.error(f"Error: {result.get('error', 'Unknown error')}")
+    # Initialize analyst if not already done
+    if not st.session_state.analyst:
+        config = Config(api_key=api_key)
+        st.session_state.analyst = DatabaseAnalyst(config)
+
+    # Chat interface
+    st.write("Chat with your database! Ask questions and get insights.")
+    
+    # Display chat history
+    for idx, message in enumerate(current_chat.messages):
+        with st.chat_message("user"):
+            st.write(message["user"])
+        with st.chat_message("assistant"):
+            if isinstance(message["assistant"], dict):
+                if message["assistant"].get("success"):
+                    st.write("Analysis Results:")
+                    st.write(message["assistant"]["metrics"])
+                    
+                    # Add download buttons in columns
+                    col1, col2, col3 = st.columns([1, 1, 2])
+                    with col1:
+                        # JSON download
+                        json_data = json.dumps({
+                            "query": message["user"],
+                            "results": message["assistant"],
+                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                        }, indent=2)
+                        st.download_button(
+                            label="📥 JSON",
+                            data=json_data,
+                            file_name=f"analysis_{idx}.json",
+                            mime="application/json",
+                            key=f"download_json_{idx}"
+                        )
+                    
+                    with col2:
+                        # CSV download (if metrics are present)
+                        if "metrics" in message["assistant"]:
+                            df = pd.DataFrame(
+                                message["assistant"]["metrics"].items(), 
+                                columns=['Metric', 'Value']
+                            )
+                            csv_data = df.to_csv(index=False)
+                            st.download_button(
+                                label="📥 CSV",
+                                data=csv_data,
+                                file_name=f"analysis_{idx}.csv",
+                                mime="text/csv",
+                                key=f"download_csv_{idx}"
+                            )
+                else:
+                    st.error(str(message["assistant"].get("error", "Unknown error")))
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("🔄 Retry", key=f"retry_{idx}"):
+                            with st.spinner("Retrying analysis..."):
+                                try:
+                                    st.session_state.analyst.query_cache = {}
+                                    response = st.session_state.analyst.process_chat_query(message["user"])
+                                    
+                                    if response.get("success"):
+                                        st.success("Retry successful!")
+                                        current_chat.messages[idx]["assistant"] = response
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Retry failed: {response.get('error', 'Unknown error')}")
+                                        if "suggestions" in response:
+                                            st.info("Suggestions for rephrasing:")
+                                            for suggestion in response["suggestions"]:
+                                                st.write(f"• {suggestion}")
+                                except Exception as e:
+                                    st.error(f"Retry error: {str(e)}")
+            else:
+                st.error(str(message["assistant"]))
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("🔄 Retry", key=f"retry_str_{idx}"):
+                        with st.spinner("Retrying analysis..."):
+                            try:
+                                st.session_state.analyst.query_cache = {}
+                                response = st.session_state.analyst.process_chat_query(message["user"])
+                                
+                                if response.get("success"):
+                                    st.success("Retry successful!")
+                                    current_chat.messages[idx]["assistant"] = response
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Retry failed: {response.get('error', 'Unknown error')}")
+                                    if "suggestions" in response:
+                                        st.info("Suggestions for rephrasing:")
+                                        for suggestion in response["suggestions"]:
+                                            st.write(f"• {suggestion}")
+                            except Exception as e:
+                                st.error(f"Retry error: {str(e)}")
+
+    # Chat input
+    user_input = st.chat_input("Ask a question about your data...")
+    
+    if user_input:
+        # Get current chat again as it might have changed
+        current_chat = next(
+            chat for chat in st.session_state.chats 
+            if chat.id == st.session_state.current_chat_id
+        )
+        
+        # Process query and update chat
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Analyzing..."):
+                response = st.session_state.analyst.process_chat_query(user_input)
+                
+                if response["success"]:
+                    st.write("Analysis Results:")
+                    st.write(response["metrics"])
+                else:
+                    # Show that we're retrying
+                    if "attempt" in response:
+                        st.info(f"Retrying... ({response['attempt']}/2)")
+                    st.error(f"Error: {response.get('error', 'Unknown error')}")
+
+        # Store in chat history
+        current_chat.messages.append({
+            "user": user_input,
+            "assistant": response
+        })
+
+        # Update chat name if this is the first message
+        if len(current_chat.messages) == 1:
+            chat_name = user_input[:30] + ("..." if len(user_input) > 30 else "")
+            current_chat.name = chat_name
 
 if __name__ == "__main__":
     main()

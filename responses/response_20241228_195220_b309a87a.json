@@ -1,0 +1,7 @@
+{
+  "query": "Show RevPAR trends for both AC Wailea and Surfrider Malibu",
+  "timestamp": "20241228_195220",
+  "response": {
+    "error": "Error handling follow-up: 'GroupChatManager' object has no attribute 'run'"
+  }
+}
