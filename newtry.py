@@ -207,7 +207,8 @@ class DatabaseAnalyst:
                     {"input": enhanced_prompt},
                     config={"handle_parsing_errors": True, "timeout": 30}
                 )
-                response_text = str(agent_response)
+                # Extract just the output content if response is in dict format
+                response_text = agent_response['output'] if isinstance(agent_response, dict) else str(agent_response)
             except Exception as e:
                 # Better error handling for agent responses
                 if "Could not parse LLM output: `" in str(e):

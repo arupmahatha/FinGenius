@@ -21,8 +21,8 @@
     },
     {
       "role": "assistant",
-      "content": "🎯 Here are the results:\n\n**Analysis**: {'input': 'Based on this question: What were the main revenue streams?\\n            Generate a SQL query that will provide accurate metrics.\\n            Focus on calculating relevant business metrics and ensure all calculations are clear.', 'output': 'The main revenue streams based on the query results are:\\n\\n1. Revenue \\n2. Department Profit (Loss)\\n3. Net Operating Income after Reserve\\n\\nThe query provides the current month and year-to-date actual revenue amounts for the top revenue stream accounts.'}\n"
+      "content": "📊 **Original Analysis:**\n\n🎯 Here are the results:\n\n**Analysis**: {'input': 'Based on this question: What were the main revenue streams?\\n            Generate a SQL query that will provide accurate metrics.\\n            Focus on calculating relevant business metrics and ensure all calculations are clear.', 'output': 'The main revenue streams based on the query results are:\\n\\n1. Revenue \\n2. Department Profit (Loss)\\n3. Net Operating Income after Reserve\\n\\nThe query provides the current month and year-to-date actual revenue amounts for the top revenue stream accounts.'}\n\n\n---\n\n🔄 **New Analysis Results:**\n\n**Analysis**: The main revenue streams based on the query results are:\n\n1. Revenue \n2. Department Profit (Loss)\n3. Net Operating Income after Reserve\n\nThe query provides the current month and year-to-date actual revenue amounts for the top revenue stream accounts.\n\n\n_Reanalyzed at: 22:16:11_"
     }
   ],
-  "timestamp": "2024-12-28T22:03:20.721121"
+  "timestamp": "2024-12-28T22:16:11.705966"
 }
