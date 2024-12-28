@@ -291,6 +291,14 @@ class DatabaseAnalyst:
         result = self.process_query(context_prompt)
         return result
 
+    def redo_analysis(self, query: str, clear_cache: bool = True) -> Dict:
+        """Redo analysis with option to clear cache"""
+        if clear_cache:
+            cache_key = self.get_cache_key(query)
+            if cache_key in self.query_cache:
+                del self.query_cache[cache_key]
+        return self.process_query(query)
+
 def format_output(results: Dict) -> str:
     output = []
     output.append("=== Database Analysis Results ===")
@@ -526,18 +534,194 @@ Please ask me any question about your database!"""
         st.error(f"Failed to initialize database analyst: {str(e)}")
         return
 
-    # Chat interface with improved message display
+    # Chat interface with improved message display, redo option, and edit query
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            
-            # Add context for follow-up questions
             if message["role"] == "user":
+                # Add edit functionality for user queries
+                if f"edit_mode_{idx}" not in st.session_state:
+                    st.session_state[f"edit_mode_{idx}"] = False
+
+                if st.session_state[f"edit_mode_{idx}"]:
+                    # Show edit interface
+                    edited_query = st.text_area(
+                        "Edit your query:",
+                        value=message["content"],
+                        key=f"edit_query_{idx}"
+                    )
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("Save & Run", key=f"save_edit_{idx}"):
+                            # Update the query
+                            st.session_state.messages[idx]["content"] = edited_query
+                            
+                            # Remove the old response
+                            if idx + 1 < len(st.session_state.messages) and st.session_state.messages[idx + 1]["role"] == "assistant":
+                                st.session_state.messages.pop(idx + 1)
+                            
+                            # Run new analysis
+                            with st.spinner("Running new analysis..."):
+                                try:
+                                    result = analyst.process_query(edited_query)
+                                    if result["success"]:
+                                        response = "🎯 Results for edited query:\n\n"
+                                        for metric, value in result['metrics'].items():
+                                            response += f"**{metric}**: {value}\n"
+                                    else:
+                                        response = f"❌ Error: {result.get('error', 'Unknown error')}"
+                                    
+                                    # Insert new response
+                                    st.session_state.messages.insert(idx + 1, {
+                                        "role": "assistant",
+                                        "content": response
+                                    })
+                                    
+                                    # Save chat
+                                    chat_manager.save_chat(
+                                        st.session_state.current_chat_id,
+                                        st.session_state.messages
+                                    )
+                                    
+                                    # Exit edit mode
+                                    st.session_state[f"edit_mode_{idx}"] = False
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error processing edited query: {str(e)}")
+                    
+                    with col2:
+                        if st.button("Cancel", key=f"cancel_edit_{idx}"):
+                            st.session_state[f"edit_mode_{idx}"] = False
+                            st.rerun()
+                else:
+                    # Show normal query with edit button
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.markdown(message["content"])
+                    with col2:
+                        if st.button("✏️ Edit", key=f"edit_{idx}"):
+                            st.session_state[f"edit_mode_{idx}"] = True
+                            st.rerun()
                 st.caption("Question")
-            elif message["role"] == "assistant":
-                st.caption("Response")
+            else:
+                # Show assistant messages normally
+                st.markdown(message["content"])
+                
+                if message["role"] == "assistant":
+                    # Create columns for action buttons
+                    col1, col2 = st.columns([1, 4])
+                    
+                    with col1:
+                        if st.button("🔄 Redo", key=f"redo_{idx}", help="Redo this analysis with fresh results"):
+                            # Get the corresponding user query
+                            user_query = None
+                            for i in range(idx, -1, -1):
+                                if st.session_state.messages[i]["role"] == "user":
+                                    user_query = st.session_state.messages[i]["content"]
+                                    break
+                            
+                            if user_query:
+                                with st.spinner("🔄 Redoing analysis..."):
+                                    try:
+                                        # Redo analysis with cleared cache
+                                        result = analyst.redo_analysis(user_query, clear_cache=True)
+                                        
+                                        if result["success"]:
+                                            # Store the original response
+                                            original_response = message["content"]
+                                            
+                                            # Create new response
+                                            new_response = "🔄 **New Analysis Results:**\n\n"
+                                            for metric, value in result['metrics'].items():
+                                                new_response += f"**{metric}**: {value}\n"
+                                            new_response += f"\n\n_Reanalyzed at: {datetime.now().strftime('%H:%M:%S')}_"
+                                            
+                                            # Create combined response with original and new results
+                                            combined_response = (
+                                                "📊 **Original Analysis:**\n\n"
+                                                f"{original_response}\n\n"
+                                                "---\n\n"  # Separator
+                                                f"{new_response}"
+                                            )
+                                            
+                                            # Update the message content
+                                            st.session_state.messages[idx]["content"] = combined_response
+                                            
+                                            # Add comparison note if results differ
+                                            if original_response != new_response:
+                                                st.info("💡 The results have changed from the original analysis.")
+                                            
+                                            # Save chat after reanalysis
+                                            chat_manager.save_chat(
+                                                st.session_state.current_chat_id,
+                                                st.session_state.messages
+                                            )
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Redo failed: {result.get('error', 'Unknown error')}")
+                                    except Exception as e:
+                                        st.error(f"Error during reanalysis: {str(e)}")
+                    
+                    with col2:
+                        # Show analysis information
+                        if "Original Analysis:" in message["content"]:
+                            st.caption("Contains original and reanalyzed results")
+                
                 if idx > 0 and st.session_state.messages[idx-1]["role"] == "user":
                     st.caption("Follow-up available ↓")
+
+    # Add a redo button for the entire conversation with comparison
+    if st.session_state.messages and len(st.session_state.messages) > 1:
+        if st.sidebar.button("🔄 Redo Entire Analysis", help="Redo all queries in this conversation"):
+            with st.spinner("Redoing entire analysis..."):
+                try:
+                    new_messages = [st.session_state.messages[0]]  # Keep the welcome message
+                    
+                    # Redo each query in the conversation
+                    for idx, message in enumerate(st.session_state.messages[1:]):
+                        if message["role"] == "user":
+                            # Add the user message
+                            new_messages.append(message)
+                            
+                            # Get original response if it exists
+                            original_response = None
+                            if idx + 2 < len(st.session_state.messages):
+                                original_response = st.session_state.messages[idx + 2]["content"]
+                            
+                            # Redo the analysis
+                            result = analyst.redo_analysis(message["content"], clear_cache=True)
+                            
+                            if result["success"]:
+                                if original_response:
+                                    response = (
+                                        "📊 **Original Analysis:**\n\n"
+                                        f"{original_response}\n\n"
+                                        "---\n\n"
+                                        "🔄 **New Analysis Results:**\n\n"
+                                    )
+                                else:
+                                    response = "🔄 **Analysis Results:**\n\n"
+                                
+                                for metric, value in result['metrics'].items():
+                                    response += f"**{metric}**: {value}\n"
+                                response += f"\n\n_Reanalyzed at: {datetime.now().strftime('%H:%M:%S')}_"
+                            else:
+                                response = f"❌ Error: {result.get('error', 'Unknown error')}"
+                            
+                            # Add the assistant response
+                            new_messages.append({
+                                "role": "assistant",
+                                "content": response
+                            })
+                    
+                    # Update messages and save
+                    st.session_state.messages = new_messages
+                    chat_manager.save_chat(
+                        st.session_state.current_chat_id,
+                        st.session_state.messages
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error during complete reanalysis: {str(e)}")
 
     # Chat input with automatic saving
     if prompt := st.chat_input("Ask me about your database...", key="chat_input"):
