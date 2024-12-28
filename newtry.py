@@ -22,6 +22,8 @@ from langchain_core.tools import Tool
 from functools import lru_cache
 import hashlib
 import pickle
+import uuid
+from datetime import datetime
 
 # Initialize memory for state management
 memory = {}  # Using a simple dictionary for in-memory storage
@@ -49,6 +51,7 @@ class AnalysisState(TypedDict):
     agent_states: Dict          # State tracking for agents
     raw_responses: Dict         # Raw responses from agents
     messages: List[AnyMessage]  # Conversation history
+    conversation_history: List[Dict]  # Add this line
 
 class ConfigError(Exception):
     """Custom exception for configuration errors"""
@@ -138,20 +141,33 @@ class DatabaseAnalyst:
         self.cache_file = ".query_cache.pkl"
         self.prompt_cache_file = ".prompt_cache.pkl"
         self.load_caches()
+        
+        # Add conversation memory
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
 
     def load_caches(self):
         """Load both caches from files"""
-        try:
-            with open(self.cache_file, 'rb') as f:
-                self.query_cache = pickle.load(f)
-        except FileNotFoundError:
-            self.query_cache = {}
-            
-        try:
-            with open(self.prompt_cache_file, 'rb') as f:
-                self.prompt_cache = pickle.load(f)
-        except FileNotFoundError:
-            self.prompt_cache = {}
+        self.query_cache = {}
+        self.prompt_cache = {}
+        
+        # Try to load query cache
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, 'rb') as f:
+                    self.query_cache = pickle.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load query cache: {e}")
+        
+        # Try to load prompt cache
+        if os.path.exists(self.prompt_cache_file):
+            try:
+                with open(self.prompt_cache_file, 'rb') as f:
+                    self.prompt_cache = pickle.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load prompt cache: {e}")
 
     def save_caches(self):
         """Save both caches to files"""
@@ -181,33 +197,36 @@ class DatabaseAnalyst:
             return self.query_cache[cache_key]
 
         try:
-            prompt = METRIC_CALCULATION_PROMPT.format(question=query)
-            cached_response = self.get_cached_prompt_response(prompt)
+            # Improved prompt for better SQL generation
+            enhanced_prompt = f"""Based on this question: {query}
+            Generate a SQL query that will provide accurate metrics.
+            Focus on calculating relevant business metrics and ensure all calculations are clear."""
             
             try:
-                agent_response = self.sql_agent.invoke({
-                    "input": prompt
-                }, config={"handle_parsing_errors": False})
+                agent_response = self.sql_agent.invoke(
+                    {"input": enhanced_prompt},
+                    config={"handle_parsing_errors": True, "timeout": 30}
+                )
                 response_text = str(agent_response)
             except Exception as e:
-                error_text = str(e)
-                # If this contains an analysis, capture it as a successful response
-                if "Could not parse LLM output: `" in error_text:
-                    analysis = error_text.split("Could not parse LLM output: `")[1].rsplit("`", 1)[0]
-                    result = {
+                # Better error handling for agent responses
+                if "Could not parse LLM output: `" in str(e):
+                    analysis = str(e).split("Could not parse LLM output: `")[1].rsplit("`", 1)[0]
+                    return {
                         "success": True,
-                        "metrics": {"analysis": analysis},
+                        "metrics": {"Analysis": analysis},
                         "type": "analysis"
                     }
-                    self.query_cache[cache_key] = result
-                    self.save_caches()
-                    return result
-                return {"success": False, "error": str(e)}
+                return {"success": False, "error": f"Query processing error: {str(e)}"}
 
-            # Continue with normal SQL processing if no exception
             sql_query = self._extract_sql(response_text)
             if not sql_query:
-                return {"success": False, "error": "No valid SQL query was generated"}
+                # Fallback to natural language response if no SQL found
+                return {
+                    "success": True,
+                    "metrics": {"Analysis": response_text},
+                    "type": "analysis"
+                }
             
             result = self._execute_sql_safely(sql_query)
             if result["success"]:
@@ -257,6 +276,19 @@ class DatabaseAnalyst:
         state = AnalysisState(user_query=query)
         result = self.process_query(state)
         self.query_cache[query] = result
+        return result
+
+    def process_follow_up(self, follow_up_question: str, previous_context: Dict) -> Dict:
+        # Add the context to the prompt
+        context_prompt = f"""
+        Previous context: {previous_context.get('metrics', {})}
+        Follow-up question: {follow_up_question}
+        
+        Please answer the follow-up question using the context provided.
+        """
+        
+        # Process the follow-up using the context
+        result = self.process_query(context_prompt)
         return result
 
 def format_output(results: Dict) -> str:
@@ -319,85 +351,187 @@ def analyze_query(query: str) -> str:
     except Exception as e:
         return f"Error during analysis: {str(e)}"
 
+# Add new class for chat management
+class ChatManager:
+    def __init__(self):
+        self.chats_dir = "saved_chats"
+        os.makedirs(self.chats_dir, exist_ok=True)
+        
+    def save_chat(self, chat_id: str, messages: list):
+        # Get chat title from first user message or use timestamp
+        title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        for message in messages:
+            if message["role"] == "user":
+                # Clean and truncate the title
+                clean_title = message["content"].replace("\n", " ").strip()
+                title = f"Query: {clean_title[:40]}..." if len(clean_title) > 40 else f"Query: {clean_title}"
+                break
+                
+        chat_data = {
+            "id": chat_id,
+            "title": title,
+            "messages": messages,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        filename = os.path.join(self.chats_dir, f"{chat_id}.json")
+        with open(filename, 'w') as f:
+            json.dump(chat_data, f)
+            
+    def load_chats(self) -> dict:
+        chats = {}
+        for filename in os.listdir(self.chats_dir):
+            if filename.endswith('.json'):
+                with open(os.path.join(self.chats_dir, filename)) as f:
+                    chat_data = json.load(f)
+                    chats[chat_data['id']] = chat_data
+        return dict(sorted(chats.items(), key=lambda x: x[1]['timestamp'], reverse=True))
+        
+    def delete_chat(self, chat_id: str):
+        filename = os.path.join(self.chats_dir, f"{chat_id}.json")
+        if os.path.exists(filename):
+            os.remove(filename)
+
 # Streamlit UI
 def main():
-    st.title("Database Analysis Assistant")
+    st.set_page_config(
+        page_title="SQL Database Analyst",
+        page_icon="🔍",
+        layout="wide"
+    )
     
-    # Initialize session state for results if it doesn't exist
-    if 'analysis_results' not in st.session_state:
-        st.session_state.analysis_results = {}
+    st.title("SQL Database Analysis Assistant")
     
-    st.sidebar.title("Configuration")
-    api_key = st.sidebar.text_input("Enter your Anthropic API Key:", type="password")
+    # Initialize chat manager and session state
+    chat_manager = ChatManager()
     
-    config = Config(api_key=api_key)
-    
-    if not api_key:
-        st.warning("Please enter your Anthropic API key in the sidebar to proceed.")
-        return
-        
-    st.write("""
-    Welcome to the Database Analysis Assistant! 
-    Select the number of questions you'd like to ask and enter them in the boxes below.
-    """)
-    
-    # Number selector for questions
-    num_questions = st.number_input("How many questions would you like to ask?", 
-                                  min_value=1, 
-                                  max_value=10, 
-                                  value=1)
-    
-    # Create list to store queries
-    queries = []
-    
-    # Create text input boxes based on number selected
-    for i in range(int(num_questions)):
-        query = st.text_input(f"Question {i+1}:", key=f"query_{i}")
-        if query:  # Only add non-empty queries
-            queries.append(query)
-    
-    if st.button("Analyze"):
-        if queries:
-            # Clear previous results when running new analysis
-            st.session_state.analysis_results = {}
-            
-            for query in queries:
-                if query.strip():  # Process only non-empty queries
-                    with st.spinner(f"Processing: {query}"):
-                        analyst = DatabaseAnalyst(config)
-                        result = analyst.process_query(query)
-                        # Store result in session state
-                        st.session_state.analysis_results[query] = result
+    # Improved session state initialization
+    if 'initialized' not in st.session_state:
+        st.session_state.update({
+            'initialized': True,
+            'messages': [],
+            'current_context': None,
+            'current_chat_id': str(uuid.uuid4()),
+            'chats': chat_manager.load_chats(),
+            'last_query': None,
+            'new_chat_clicked': False,
+            'api_key_set': False
+        })
 
-    # Display results from session state
-    for query, result in st.session_state.analysis_results.items():
-        st.write(f"### Results for: {query}")
-        if result["success"]:
-            # Show Results
-            st.write("#### Results:")
-            st.write(result["metrics"])
+    # Sidebar configuration with improved error handling
+    with st.sidebar:
+        st.title("Configuration Settings")
+        api_key = st.text_input("Anthropic API Key:", type="password")
+        
+        if api_key:
+            st.session_state.api_key_set = True
+        
+        st.title("Conversation Management")
+        
+        # Improved new chat button handling
+        if st.button("Start New Analysis", type="primary", key="new_chat_button", disabled=not st.session_state.api_key_set):
+            if not st.session_state.new_chat_clicked:
+                st.session_state.new_chat_clicked = True
+                
+                # Save current chat if it exists
+                if st.session_state.messages:
+                    chat_manager.save_chat(
+                        st.session_state.current_chat_id,
+                        st.session_state.messages
+                    )
+                
+                # Reset states with new chat
+                new_chat_id = str(uuid.uuid4())
+                st.session_state.update({
+                    'current_chat_id': new_chat_id,
+                    'messages': [],
+                    'current_context': None,
+                    'last_query': None
+                })
+                
+                # Add welcome message
+                welcome_message = {
+                    "role": "assistant",
+                    "content": """👋 Hello! I'm your SQL Database Analysis Assistant. 
+
+I can help you analyze your database by:
+- Running SQL queries
+- Providing data insights
+- Answering follow-up questions about the results
+
+Please ask me any question about your database!"""
+                }
+                st.session_state.messages.append(welcome_message)
+                st.rerun()
+
+    # Reset new_chat_clicked flag
+    if st.session_state.new_chat_clicked:
+        st.session_state.new_chat_clicked = False
+
+    # API key validation
+    if not api_key:
+        st.warning("⚠️ Please enter your Anthropic API key in the sidebar to proceed.")
+        return
+
+    # Initialize analyst with error handling
+    try:
+        config = Config(api_key=api_key)
+        analyst = DatabaseAnalyst(config)
+    except Exception as e:
+        st.error(f"Failed to initialize database analyst: {str(e)}")
+        return
+
+    # Chat interface with improved message handling
+    for idx, message in enumerate(st.session_state.messages):
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
             
-            # Create unique key for download button
-            download_key = f"download_{hashlib.md5(query.encode()).hexdigest()}"
-            
-            # Prepare download data
-            json_str = json.dumps({
-                "query": query,
-                "results": result["metrics"],
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }, indent=2)
-            safe_filename = f"analysis_{hashlib.md5(query.encode()).hexdigest()[:8]}.json"
-            
-            # Download button with unique key
-            st.download_button(
-                label=f"Download Results for: {query[:30]}...",
-                data=json_str,
-                file_name=safe_filename,
-                mime="application/json",
-                key=download_key
-            )
-        else:
-            st.error(f"Error: {result.get('error', 'Unknown error')}")
+            if message["role"] == "assistant":
+                if st.button("🔄 Retry", key=f"retry_{idx}", help="Retry this analysis"):
+                    user_query = next(
+                        (msg["content"] for msg in st.session_state.messages[:idx] 
+                         if msg["role"] == "user"),
+                        None
+                    )
+                    if user_query:
+                        with st.spinner("🔄 Reanalyzing..."):
+                            result = analyst.process_query(user_query)
+                            if result["success"]:
+                                new_response = "🎯 Updated results:\n\n"
+                                for metric, value in result['metrics'].items():
+                                    new_response += f"**{metric}**: {value}\n"
+                                st.session_state.messages[idx]["content"] = new_response
+                                chat_manager.save_chat(
+                                    st.session_state.current_chat_id,
+                                    st.session_state.messages
+                                )
+                                st.rerun()
+
+    # Chat input with improved error handling
+    if prompt := st.chat_input("Ask me about your database...", key="chat_input"):
+        st.session_state.last_query = prompt
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Analyzing..."):
+                try:
+                    result = analyst.process_query(prompt)
+                    
+                    if result["success"]:
+                        response = "🎯 Here are the results:\n\n"
+                        for metric, value in result['metrics'].items():
+                            response += f"**{metric}**: {value}\n"
+                    else:
+                        response = f"❌ Error: {result.get('error', 'Unknown error')}"
+                    
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    chat_manager.save_chat(
+                        st.session_state.current_chat_id,
+                        st.session_state.messages
+                    )
+                except Exception as e:
+                    st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
