@@ -334,22 +334,45 @@ def main():
         
     st.write("""
     Welcome to the Database Analysis Assistant! 
-    Ask any question about your data, and I'll help you analyze it.
+    Ask any questions about your data, and I'll help you analyze it.
+    You can enter multiple questions, one per line.
     """)
     
-    query = st.text_area("Enter your analysis question:", height=100)
+    queries = st.text_area("Enter your analysis questions (one per line):", height=150)
     
     if st.button("Analyze"):
-        if query:
-            with st.spinner("Analyzing your query..."):
-                analyst = DatabaseAnalyst(config)
-                result = analyst.process_query(query)
-                
-                if result["success"]:
-                    st.write("### Results:")
-                    st.write(result["metrics"])
-                else:
-                    st.error(f"Error: {result.get('error', 'Unknown error')}")
+        if queries:
+            query_list = [q.strip() for q in queries.split('\n') if q.strip()]
+            
+            for query in query_list:
+                with st.spinner(f"Analyzing: {query}"):
+                    analyst = DatabaseAnalyst(config)
+                    result = analyst.process_query(query)
+                    
+                    # Create result dictionary
+                    analysis_result = {
+                        "query": query,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "results": result
+                    }
+                    
+                    # Display individual result with its own download button
+                    st.write(f"### Analysis for: {query}")
+                    if result["success"]:
+                        st.write(result["metrics"])
+                        
+                        # Create individual download button for this result
+                        json_str = json.dumps(analysis_result, indent=2)
+                        safe_filename = f"analysis_{hashlib.md5(query.encode()).hexdigest()[:8]}.json"
+                        st.download_button(
+                            label=f"Download Results for: {query[:30]}...",
+                            data=json_str,
+                            file_name=safe_filename,
+                            mime="application/json",
+                            key=safe_filename  # Unique key for each button
+                        )
+                    else:
+                        st.error(f"Error: {result.get('error', 'Unknown error')}")
 
 if __name__ == "__main__":
     main()

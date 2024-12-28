@@ -1,27 +1,26 @@
 # Core dependencies
-langchain-anthropic>=0.0.6
-langchain>=0.1.0
-langchain-community>=0.0.10
-langgraph>=0.0.10
-anthropic>=0.8.1
-streamlit>=1.30.0
+langchain-anthropic
+langchain
+langchain-community
+langgraph
+anthropic
+streamlit
 
 # Data handling
-pandas>=2.0.0
-numpy>=1.24.0
+pandas
+numpy
 
 # Database
-sqlite3  # Usually comes with Python
-sqlalchemy>=2.0.0
+sqlalchemy
+# Note: sqlite3 is a built-in library with Python and does not need to be added here.
 
 # Typing and utilities
-typing-extensions>=4.5.0
-python-dotenv>=1.0.0
+typing-extensions
+python-dotenv
 
 # Caching and serialization
-pickle5>=0.0.11  # For Python < 3.8, otherwise built-in pickle is fine
-hashlib  # Built into Python
-functools  # Built into Python
+pickle5  # Only for Python < 3.8
+# Note: hashlib and functools are built-in libraries with Python and do not need to be added here.
 
 # Optional but recommended
-tqdm>=4.65.0  # For progress bars
+tqdm  # For progress bars
